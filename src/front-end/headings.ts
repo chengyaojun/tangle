@@ -19,10 +19,15 @@ export function headingRoleForDepth(depth: number): HeadingRole {
   }
 }
 
-export function parseHeadingText(text: string): { title: string; symbolName?: string } {
+export function parseHeadingText(text: string): { title: string; symbolName?: string; hasSpaces?: boolean } {
   const match = text.match(/^(.*?)\s+\(([A-Za-z_][A-Za-z0-9_]*)\)\s*$/);
   if (!match || !match[1] || !match[2]) {
-    return { title: text.trim() };
+    const trimmed = text.trim();
+    const isAscii = /^[a-zA-Z][a-zA-Z0-9]*$/.test(trimmed);
+    const hasSpaces = !isAscii && /^[a-zA-Z][a-zA-Z\s]+$/.test(trimmed);
+    const result: { title: string; symbolName?: string; hasSpaces?: boolean } = { title: trimmed };
+    if (hasSpaces) result.hasSpaces = true;
+    return result;
   }
 
   return {

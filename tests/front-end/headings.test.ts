@@ -14,9 +14,9 @@ describe("headingRoleForDepth", () => {
 
 describe("parseHeadingText", () => {
   it("extracts a stable internal symbol from a trailing parenthesized identifier", () => {
-    expect(parseHeadingText("\u53D1\u9001\u901A\u77E5 (send_notification)")).toEqual({
+    expect(parseHeadingText("\u53D1\u9001\u901A\u77E5 (sendNotification)")).toEqual({
       title: "\u53D1\u9001\u901A\u77E5",
-      symbolName: "send_notification"
+      symbolName: "sendNotification"
     });
   });
 

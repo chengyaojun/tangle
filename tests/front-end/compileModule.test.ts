@@ -41,4 +41,42 @@ describe("compileModule", () => {
       expect.objectContaining({ language: "tangle", value: "return this { is_active: true }" })
     ]);
   });
+
+  it("reports casing error for PascalCase violation on type headings", () => {
+    const mod = compileModule({
+      file: "bad.md",
+      source: `### user
+* \`id\`: user ID (Int)
+`
+    });
+    expect(mod.diagnostics).toEqual([
+      expect.objectContaining({ code: "TANGLE_INVALID_HEADING_CASE" })
+    ]);
+  });
+
+  it("accepts Unicode headings without casing enforcement", () => {
+    const mod = compileModule({
+      file: "ok.md",
+      source: `#### 确认支付
+@export
+
+\`\`\`@tangle
+return true
+\`\`\`
+`
+    });
+    // No casing diagnostic for Unicode (rule 3 exemption)
+    expect(mod.diagnostics.filter(d => d.code === "TANGLE_INVALID_HEADING_CASE")).toHaveLength(0);
+  });
+
+  it("reports multi-word English heading diagnostic", () => {
+    const mod = compileModule({
+      file: "bad.md",
+      source: `#### clear all items
+`
+    });
+    expect(mod.diagnostics).toEqual([
+      expect.objectContaining({ code: "TANGLE_HEADING_MULTI_WORD" })
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 # Tangle Track A1 Frontend 实现计划
 
-> **语法精炼勘误（2026-06-25）：** `with { }` → 无关键字大括号更新（`user { field: val }`），`Struct -> method` 标题 → 隐式方法绑定（标题嵌套自动识别）。详见设计规格 §3.2、§4.2、§4.3。
+> **语法精炼勘误（2026-06-25）：** (1) `with { }` → 无关键字大括号更新。(2) `Struct -> method` → 隐式方法绑定。(3) 新增标题大小写对齐契约：深度 1-3 PascalCase，深度 4-6 camelCase。详见设计规格 §3.2。
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 

@@ -124,6 +124,42 @@ function buildHeading(
     }
   }
 
+  // Validate heading casing
+  const candidateName = parsed.symbolName ?? parsed.title;
+  const isAsciiOnly = /^[a-zA-Z][a-zA-Z0-9]*$/.test(candidateName);
+
+  if (parsed.hasSpaces) {
+    diagnostics.push({
+      code: "TANGLE_HEADING_MULTI_WORD",
+      message: `Heading "${parsed.title}" contains spaces. Use camelCase (e.g. "clearAll") or add an explicit parenthesized identifier "(clear)".`,
+      span: spanFromNode(file, node)
+    });
+  }
+
+  if (isAsciiOnly) {
+    const depth = node.depth ?? 1;
+    const firstChar = candidateName[0]!;
+    if (depth >= 1 && depth <= 3) {
+      // PascalCase: must start with uppercase
+      if (firstChar < 'A' || firstChar > 'Z') {
+        diagnostics.push({
+          code: "TANGLE_INVALID_HEADING_CASE",
+          message: `Heading "${parsed.title}" (depth ${depth}): symbol "${candidateName}" must use PascalCase (start with uppercase).`,
+          span: spanFromNode(file, node)
+        });
+      }
+    } else if (depth >= 4 && depth <= 6) {
+      // camelCase: must start with lowercase
+      if (firstChar < 'a' || firstChar > 'z') {
+        diagnostics.push({
+          code: "TANGLE_INVALID_HEADING_CASE",
+          message: `Heading "${parsed.title}" (depth ${depth}): symbol "${candidateName}" must use camelCase (start with lowercase).`,
+          span: spanFromNode(file, node)
+        });
+      }
+    }
+  }
+
   const heading: TangleHeading = {
     id: stableHeadingId(parsed.symbolName ?? parsed.title),
     depth: node.depth ?? 1,

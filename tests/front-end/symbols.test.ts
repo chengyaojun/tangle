@@ -21,7 +21,7 @@ describe("symbol diagnostics", () => {
   it("rejects exported semantic micro headings", () => {
     const mod = compileModule({
       file: "user.md",
-      source: `# User Module
+      source: `# UserModule
 
 ##### 前置条件
 @export
