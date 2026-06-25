@@ -3,7 +3,7 @@ import type { ParsedCodeBlock } from "../ast.js";
 import type { TypeEnv } from "./env.js";
 import { tokenize } from "../parser/lexer.js";
 import { parseCodeBody } from "../parser/parser.js";
-import { resolveTypes } from "./resolve.js";
+import { resolveTypes, findReceiverHeading } from "./resolve.js";
 import { checkExpression } from "./check.js";
 import { createEnv } from "./env.js";
 import { ErrorRegistry } from "./errors.js";
@@ -45,7 +45,8 @@ export function checkModule(module: TangleModule): CheckedModule {
     const heading = module.headings.find(h => h.id === parsed.headingId);
     if (!heading) continue;
 
-    const receiverName = extractReceiver(heading.title);
+    const parentHeading = findReceiverHeading(heading, module.headings);
+    const receiverName = parentHeading ? parentHeading.title.replace(/\s*\(.*\)\s*$/, "").trim() : null;
     const checkEnv = createEnv();
     checkEnv.structs = env.structs;
     checkEnv.interfaces = env.interfaces;
@@ -88,9 +89,4 @@ export function checkModule(module: TangleModule): CheckedModule {
     typeEnv: env,
     diagnostics: allDiagnostics
   };
-}
-
-function extractReceiver(title: string): string | null {
-  const match = title.match(/^(\w+)\s*->/);
-  return match?.[1] ?? null;
 }

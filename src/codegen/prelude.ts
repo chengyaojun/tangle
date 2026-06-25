@@ -2,7 +2,7 @@
 export const RUNTIME_PRELUDE = `
 // Tangle Runtime Prelude
 function __tangle_struct(fields) { return Object.freeze({ ...fields }); }
-function __tangle_with(obj, updates) { return Object.freeze({ ...obj, ...updates }); }
+function __tangle_update(obj, updates) { return Object.freeze({ ...obj, ...updates }); }
 function Ok(value) { return { ok: true, value }; }
 function Err(variant, value) { return { ok: false, error: { variant, value } }; }
 function __tangle_propagate(result) { if (!result.ok) return result; return result.value; }

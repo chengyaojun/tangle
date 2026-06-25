@@ -26,7 +26,7 @@ describe("resolveTypes", () => {
       source: `### User
 * \`id\`: user ID (Int)
 
-#### User -> activate (activate)
+#### activate (activate)
 * \`message\`: notification (String)
 `
     });
@@ -42,7 +42,7 @@ describe("resolveTypes", () => {
       file: "notify.md",
       source: `### Notifyable (接口)
 
-#### Notifyable -> send (send)
+#### send (send)
 * \`msg\`: message (String)
 `
     });

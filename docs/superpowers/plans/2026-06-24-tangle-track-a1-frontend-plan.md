@@ -1,5 +1,7 @@
 # Tangle Track A1 Frontend 实现计划
 
+> **语法精炼勘误（2026-06-25）：** `with { }` → 无关键字大括号更新（`user { field: val }`），`Struct -> method` 标题 → 隐式方法绑定（标题嵌套自动识别）。详见设计规格 §3.2、§4.2、§4.3。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 构建 Tangle TypeScript 引导期的编译前端，能把 Markdown 源文件解析为包含六级标题语义、指令、导入、结构体、函数和基础符号表的 DSL 模型。

@@ -1,5 +1,7 @@
 # Tangle Track A6: Standard Library & Business MVP 实现计划
 
+> **语法精炼勘误（2026-06-25）：** `with { }` → 无关键字大括号更新，`Struct -> method` 标题 → 隐式方法绑定，`=>` → `->`，新增 `|>` 管道。详见设计规格。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 在 A5（JS Codegen + CLI）的基础上，实现 Tangle 标准库子集和端到端业务 MVP，验证整个编译流水线的实用性。

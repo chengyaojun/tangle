@@ -51,17 +51,17 @@ describe("checkExpression", () => {
     expect(type).toEqual({ kind: "primitive", name: "String" });
   });
 
-  it("types with-update checking fields", () => {
+  it("types record-update checking fields", () => {
     const userStruct = { kind: "struct" as const, name: "User", fields: { is_active: { kind: "primitive" as const, name: "Bool" as const } }, methods: {} };
     const env = makeEnv({ structs: { User: userStruct }, variables: { user: userStruct } });
-    const [type] = checkExpression(parseExpression(tokenize("user with { is_active: true }", "test.md")), env);
+    const [type] = checkExpression(parseExpression(tokenize("user { is_active: true }", "test.md")), env);
     expect(type).toMatchObject({ kind: "struct", name: "User" });
   });
 
-  it("reports error for unknown field in with-update", () => {
+  it("reports error for unknown field in record-update", () => {
     const userStruct = { kind: "struct" as const, name: "User", fields: { is_active: { kind: "primitive" as const, name: "Bool" as const } }, methods: {} };
     const env = makeEnv({ structs: { User: userStruct }, variables: { user: userStruct } });
-    const [, diags] = checkExpression(parseExpression(tokenize("user with { unknown_field: true }", "test.md")), env);
+    const [, diags] = checkExpression(parseExpression(tokenize("user { unknown_field: true }", "test.md")), env);
     expect(diags).toEqual([expect.objectContaining({ code: "TANGLE_TYPE_UNKNOWN_FIELD" })]);
   });
 

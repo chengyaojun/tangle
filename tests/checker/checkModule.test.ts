@@ -44,7 +44,7 @@ describe("checkModule (full pipeline)", () => {
 @export
 * \`id\`: user ID (Int)
 
-#### User -> fail (fail)
+#### fail (fail)
 @export
 
 \`\`\`@tangle

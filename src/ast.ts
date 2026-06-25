@@ -9,7 +9,8 @@ export type Expr =
   | CallExpr
   | BinaryExpr
   | UnaryExpr
-  | WithUpdateExpr
+  | RecordUpdateExpr
+  | PipeExpr
   | ThisExpr
   | IfExpr
   | ArrowExpr
@@ -67,16 +68,23 @@ export type UnaryExpr = {
 
 export type UnaryOp = "!" | "-";
 
-export type WithUpdateExpr = {
-  kind: "withUpdate";
+export type RecordUpdateExpr = {
+  kind: "recordUpdate";
   object: Expr;
-  fields: WithField[];
+  fields: RecordField[];
   span: SourceSpan;
 };
 
-export type WithField = {
+export type RecordField = {
   name: string;
   value: Expr;
+  span: SourceSpan;
+};
+
+export type PipeExpr = {
+  kind: "pipe";
+  left: Expr;
+  right: Expr;
   span: SourceSpan;
 };
 

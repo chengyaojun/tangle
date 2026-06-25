@@ -48,13 +48,14 @@ export function resolveTypes(module: TangleModule): TypeEnv {
     }
   }
 
-  // Pass 2: collect callable headings as methods
+  // Pass 2: collect callable headings as methods (implicit binding via heading tree)
   for (const heading of module.headings) {
     if (heading.role !== "callable") continue;
 
-    const receiver = extractReceiver(heading.title);
-    if (!receiver) continue;
+    const parentHeading = findReceiverHeading(heading, module.headings);
+    if (!parentHeading) continue;
 
+    const receiver = extractTypeName(parentHeading.title);
     const signature = buildCallableSignature(heading);
 
     if (env.structs[receiver]) {
@@ -73,16 +74,26 @@ function extractTypeName(title: string): string {
   return title.replace(/\s*\(.*\)\s*$/, "").trim();
 }
 
-function extractReceiver(title: string): string | null {
-  const match = title.match(/^(\w+)\s*->/);
-  return match?.[1] ?? null;
+export function findReceiverHeading(heading: TangleHeading, allHeadings: TangleHeading[]): TangleHeading | null {
+  function findInTree(root: TangleHeading, target: TangleHeading): TangleHeading | null {
+    if (root.children.includes(target)) return root;
+    for (const child of root.children) {
+      const found = findInTree(child, target);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  for (const root of allHeadings) {
+    if (root === heading) return null;
+    const found = findInTree(root, heading);
+    if (found) return found;
+  }
+  return null;
 }
 
 function extractMethodName(heading: TangleHeading): string {
-  if (heading.symbolName) return heading.symbolName;
-  const afterArrow = heading.title.split("->")[1];
-  if (!afterArrow) return heading.title;
-  return afterArrow.replace(/\(.*\)/, "").trim();
+  return heading.symbolName ?? heading.title;
 }
 
 function buildCallableSignature(heading: TangleHeading): CallableSignature {

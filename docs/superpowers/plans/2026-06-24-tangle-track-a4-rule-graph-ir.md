@@ -1,5 +1,7 @@
 # Tangle Track A4: Rule Graph IR & Rule Directives 实现计划
 
+> **语法精炼勘误（2026-06-25）：** `with { }` → 无关键字大括号更新，`Struct -> method` 标题 → 隐式方法绑定，`=>` → `->`，新增 `|>` 管道。详见设计规格。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 在 A2（类型检查器）和 A3（错误处理）的基础上，设计并实现 Tangle 的统一中间表示（Rule Graph IR），并将类型检查后的代码和 4 种规则指令（@rule.flow/table/tree/toggle）lowering 到 IR。

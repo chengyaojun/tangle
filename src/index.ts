@@ -59,8 +59,9 @@ export type {
   TypeExpr,
   UnaryExpr,
   UnaryOp,
-  WithField,
-  WithUpdateExpr
+  PipeExpr,
+  RecordField,
+  RecordUpdateExpr
 } from "./ast.js";
 
 // Checker types

@@ -15,7 +15,7 @@ describe("emitJS", () => {
     graph.nodes.push({ kind: "terminal", id: "entry", label: "end", sourceSpan: { file: "t.md", startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } });
     const js = emitJS(graph, "test");
     expect(js).toContain("__tangle_struct");
-    expect(js).toContain("__tangle_with");
+    expect(js).toContain("__tangle_update");
     expect(js).toContain("Ok");
     expect(js).toContain("Err");
   });

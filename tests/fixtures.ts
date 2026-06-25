@@ -9,11 +9,11 @@ export const USER_MODULE = `# 用户中心
 * \`id\`: 用户 ID (Int)
 * \`email\`: 邮箱 (String)
 
-#### User -> 激活 (activate)
+#### 激活 (activate)
 @export
 
 \`\`\`@tangle
-return this with { is_active: true }
+return this { is_active: true }
 \`\`\`
 
 ##### 前置条件
@@ -26,7 +26,7 @@ export const USER_MODULE_WITH_INTERFACE = `# User Service
 
 ### Notifyable (接口)
 
-#### Notifyable -> send (send)
+#### send (send)
 * \`msg\`: message (String)
 
 ### User
@@ -34,11 +34,11 @@ export const USER_MODULE_WITH_INTERFACE = `# User Service
 * \`id\`: user ID (Int)
 * \`email\`: email (String)
 
-#### User -> activate (activate)
+#### activate (activate)
 @export
 * \`reason\`: activation reason (String)
 
 \`\`\`@tangle
-return this with { is_active: true }
+return this { is_active: true }
 \`\`\`
 `;

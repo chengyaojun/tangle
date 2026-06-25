@@ -4,7 +4,7 @@ A simple order processing service demonstrating Tangle's capabilities:
 - Struct definitions with typed fields
 - Method definitions with `this` sugar
 - Error handling with `@error`, `?`, and `Err()`
-- Immutable struct updates with `with { }`
+- Immutable struct updates: `expr { field: value }`
 
 ## Usage
 

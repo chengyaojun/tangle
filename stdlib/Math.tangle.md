@@ -2,7 +2,7 @@
 
 ### MathUtils
 
-#### MathUtils -> 绝对值 (abs)
+#### 绝对值 (abs)
 @export
 * `n`: number (Int)
 
@@ -10,7 +10,7 @@
 if (n < 0) -n else n
 ```
 
-#### MathUtils -> 最小值 (min)
+#### 最小值 (min)
 @export
 * `a`: first (Int)
 * `b`: second (Int)

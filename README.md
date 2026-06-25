@@ -15,11 +15,11 @@ const mod = compileModule({
 @export
 * \`email\`: 邮箱 (String)
 
-#### User -> 激活 (activate)
+#### 激活 (activate)
 @export
 
 \`\`\`@tangle
-return this with { is_active: true }
+return this { is_active: true }
 \`\`\`
 `
 });

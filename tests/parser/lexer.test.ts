@@ -19,14 +19,13 @@ describe("lexer", () => {
   });
 
   it("tokenizes keywords", () => {
-    const tokens = tokenize("return let const if else this with", "test.md");
+    const tokens = tokenize("return let const if else this", "test.md");
     expect(tokens[0]!.kind).toBe("return");
     expect(tokens[1]!.kind).toBe("let");
     expect(tokens[2]!.kind).toBe("const");
     expect(tokens[3]!.kind).toBe("if");
     expect(tokens[4]!.kind).toBe("else");
     expect(tokens[5]!.kind).toBe("this");
-    expect(tokens[6]!.kind).toBe("with");
   });
 
   it("tokenizes identifiers", () => {
@@ -37,11 +36,11 @@ describe("lexer", () => {
   });
 
   it("tokenizes operators", () => {
-    const tokens = tokenize("+ - * / % == != < > <= >= && || ! => ->", "test.md");
+    const tokens = tokenize("+ - * / % == != < > <= >= && || ! ->", "test.md");
     expect(tokens.map(t => t.kind)).toEqual([
       "plus", "minus", "star", "slash", "percent",
       "eqeq", "neq", "lt", "gt", "lte", "gte",
-      "and", "or", "bang", "fatArrow", "arrow",
+      "and", "or", "bang", "fatArrow",
       "eof"
     ]);
   });
@@ -56,9 +55,9 @@ describe("lexer", () => {
   });
 
   it("tokenizes a complete code snippet", () => {
-    const tokens = tokenize("return this with { is_active: true }", "test.md");
+    const tokens = tokenize("return this { is_active: true }", "test.md");
     expect(tokens.map(t => t.kind)).toEqual([
-      "return", "this", "with", "lbrace", "identifier", "colon", "true", "rbrace", "eof"
+      "return", "this", "lbrace", "identifier", "colon", "true", "rbrace", "eof"
     ]);
   });
 

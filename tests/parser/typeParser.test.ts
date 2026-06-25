@@ -46,7 +46,7 @@ describe("parseTypeExpr", () => {
   });
 
   it("parses function types", () => {
-    expect(parseTypeExpr("(Int, String) => Bool", "test.md")).toMatchObject({
+    expect(parseTypeExpr("(Int, String) -> Bool", "test.md")).toMatchObject({
       kind: "functionType",
       params: [
         { kind: "primitiveType", name: "Int" },

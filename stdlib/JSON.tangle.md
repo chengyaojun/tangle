@@ -2,7 +2,7 @@
 
 ### JSONUtils
 
-#### JSONUtils -> 解析 (parse)
+#### 解析 (parse)
 @export
 * `input`: JSON string (String)
 
@@ -10,7 +10,7 @@
 return JSON.parse(input)
 ```
 
-#### JSONUtils -> 序列化 (stringify)
+#### 序列化 (stringify)
 @export
 * `value`: value to stringify (T)
 

@@ -46,7 +46,7 @@ function parseFunctionType(s: ParseState): TypeExpr {
     if (peek(s).kind === "rparen") advance(s); // )
 
     if (peek(s).kind === "fatArrow") {
-      advance(s); // =>
+      advance(s); // ->
       const returns = parseSumType(s);
       const span = params.length > 0
         ? { ...params[0]!.span, endLine: returns.span.endLine, endColumn: returns.span.endColumn }

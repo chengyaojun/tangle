@@ -121,10 +121,10 @@ describe("parseExpression", () => {
     expect(expr).toMatchObject({ kind: "this" });
   });
 
-  it("parses with-update expressions", () => {
-    const expr = parseExpression(tokenize("user with { is_active: true }", "test.md"));
+  it("parses record-update expressions", () => {
+    const expr = parseExpression(tokenize("user { is_active: true }", "test.md"));
     expect(expr).toMatchObject({
-      kind: "withUpdate",
+      kind: "recordUpdate",
       object: { kind: "identifier", name: "user" },
       fields: [
         { name: "is_active", value: { kind: "literal", literalKind: "boolean", value: true } }
@@ -143,7 +143,7 @@ describe("parseExpression", () => {
   });
 
   it("parses arrow function expressions", () => {
-    const expr = parseExpression(tokenize("(x, y) => x + y", "test.md"));
+    const expr = parseExpression(tokenize("(x, y) -> x + y", "test.md"));
     expect(expr).toMatchObject({
       kind: "arrow",
       params: [{ name: "x" }, { name: "y" }],
@@ -207,7 +207,7 @@ describe("parseStatement", () => {
 describe("parseCodeBody", () => {
   it("parses multiple statements", () => {
     const body = parseCodeBody(tokenize(
-      "let a = 1\nreturn this with { is_active: true }",
+      "let a = 1\nreturn this { is_active: true }",
       "test.md"
     ));
     expect(body.statements).toHaveLength(2);

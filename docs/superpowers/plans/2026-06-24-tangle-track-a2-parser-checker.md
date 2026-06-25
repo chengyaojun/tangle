@@ -1,5 +1,7 @@
 # Tangle Track A2: Code Parser & Core Type Checker 实现计划
 
+> **语法精炼勘误（2026-06-25）：** `with { }` → 无关键字大括号更新（`user { field: val }`），`Struct -> method` 标题 → 隐式方法绑定（标题嵌套自动识别），`=>` → `->`（Lambda 与函数类型标注），新增 `|>` 管道操作符。详见设计规格 §3.2、§3.4、§4.2、§4.3。
+
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** 在 A1 的 Markdown 前端基础上，解析 `@tangle` 代码块内的 Tangle 表面语言（JS-like 表达式/语句），构建类型环境，并实现核心静态类型检查器。

@@ -36,6 +36,7 @@ export function compileModule(input: CompileModuleInput): TangleModule {
     headings.push(buildHeading(input.file, node!, body, diagnostics));
   }
 
+  buildHeadingTree(headings); // populates children for tree navigation
   const symbols = buildSymbols(headings);
   validateSymbolRules(headings, diagnostics);
 
@@ -47,6 +48,27 @@ export function compileModule(input: CompileModuleInput): TangleModule {
     symbols,
     diagnostics
   };
+}
+
+function buildHeadingTree(headings: TangleHeading[]): TangleHeading[] {
+  const roots: TangleHeading[] = [];
+  const stack: TangleHeading[] = [];
+
+  for (const heading of headings) {
+    // Pop stack until we find a parent (shallower depth)
+    while (stack.length > 0 && stack[stack.length - 1]!.depth >= heading.depth) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      roots.push(heading);
+    } else {
+      stack[stack.length - 1]!.children.push(heading);
+    }
+    stack.push(heading);
+  }
+
+  return roots;
 }
 
 function buildHeading(

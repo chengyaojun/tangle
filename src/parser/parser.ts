@@ -1,4 +1,4 @@
-import type { BinaryOp, CodeBody, Expr, Stmt, TypeExpr, WithField, ArrowParam } from "../ast.js";
+import type { BinaryOp, CodeBody, Expr, Stmt, TypeExpr, RecordField, ArrowParam } from "../ast.js";
 import type { Token } from "./lexer.js";
 import type { TangleDiagnostic, SourceSpan } from "../model.js";
 
@@ -56,7 +56,6 @@ function parseExpr(state: ParserState, minPrec: number): Expr {
       token.kind === "eof" ||
       token.kind === "semicolon" ||
       token.kind === "rparen" ||
-      token.kind === "rbrace" ||
       token.kind === "rbracket" ||
       token.kind === "comma" ||
       token.kind === "colon" ||
@@ -83,8 +82,10 @@ function infixPrecedence(token: Token): number {
   if (token.kind === "question") return 10;
   // member access (dot) and calls (lparen)
   if (token.kind === "dot" || token.kind === "lparen") return 9;
-  // with-update binds loosely
-  if (token.kind === "with") return 2;
+  // lbrace for record update (expr { field: value })
+  if (token.kind === "lbrace") return 2;
+  // pipe operator (|>)
+  if (token.kind === "pipeOp") return 2;
   // Look up binary operators via token value (e.g. "+" for kind "plus", "==" for kind "eqeq")
   const opPrec = PREC[token.value];
   if (opPrec !== undefined) return opPrec;
@@ -176,7 +177,7 @@ function parsePrefix(state: ParserState): Expr {
           });
           break;
         }
-        if (peek(state).kind === "fatArrow") advance(state); // =>
+        if (peek(state).kind === "fatArrow") advance(state); // ->
         const body = parseExpr(state, 0);
         arms.push({ pattern, body, span: pattern.span });
         if (peek(state).kind === "comma") advance(state);
@@ -249,7 +250,7 @@ function parsePrimary(state: ParserState): Expr {
   if (token.kind === "lbrace") {
     state.diagnostics.push({
       code: "TANGLE_PARSE_UNEXPECTED_TOKEN",
-      message: "Unexpected { — use 'with { }' for struct updates",
+      message: "Unexpected { — struct updates must follow an expression: expr { field: value }",
       span: token.span,
     });
     return { kind: "literal", literalKind: "boolean", value: false, span: token.span };
@@ -308,7 +309,7 @@ function parseGroupOrArrow(state: ParserState, lparen: Token): Expr {
 
     // Arrow function?
     if (peek(state).kind === "fatArrow") {
-      advance(state); // =>
+      advance(state); // ->
       const params: ArrowParam[] = items.map((item) => {
         if (item.kind === "identifier") {
           return { name: item.name, span: item.span };
@@ -341,7 +342,7 @@ function parseGroupOrArrow(state: ParserState, lparen: Token): Expr {
 
   // Arrow function with single param?
   if (peek(state).kind === "fatArrow") {
-    advance(state); // =>
+    advance(state); // ->
     const params: ArrowParam[] =
       first.kind === "identifier"
         ? [{ name: first.name, span: first.span }]
@@ -406,32 +407,53 @@ function parseInfix(state: ParserState, left: Expr, token: Token): Expr {
     };
   }
 
-  // With update: expr with { fields }
-  if (token.kind === "with") {
-    advance(state); // with
-    const fields: WithField[] = [];
-    if (peek(state).kind === "lbrace") advance(state); // {
-    while (peek(state).kind !== "rbrace" && peek(state).kind !== "eof") {
-      const fieldName = peek(state);
-      if (fieldName.kind !== "identifier") break;
-      advance(state);
-      if (peek(state).kind === "colon") advance(state); // :
-      const fieldValue = parseExpr(state, 0);
-      fields.push({
-        name: fieldName.value,
-        value: fieldValue,
-        span: fieldName.span,
-      });
-      if (peek(state).kind === "comma") advance(state);
+  // Record update: expr { field: value, ... }
+  if (token.kind === "lbrace") {
+    advance(state); // {
+    // Lookahead: if identifier : follows, this is a RecordUpdate
+    const nextTok = peek(state);
+    if (nextTok.kind === "identifier") {
+      const afterIdent = state.tokens[state.pos + 1];
+      if (afterIdent?.kind === "colon") {
+        // Confirmed RecordUpdate — parse fields
+        const fields: RecordField[] = [];
+        while (peek(state).kind !== "rbrace" && peek(state).kind !== "eof") {
+          const fieldName = peek(state);
+          if (fieldName.kind !== "identifier") break;
+          advance(state);
+          if (peek(state).kind === "colon") advance(state); // :
+          const fieldValue = parseExpr(state, 0);
+          fields.push({
+            name: fieldName.value,
+            value: fieldValue,
+            span: fieldName.span,
+          });
+          if (peek(state).kind === "comma") advance(state);
+        }
+        const rbrace = peek(state);
+        if (rbrace.kind === "rbrace") advance(state);
+        return {
+          kind: "recordUpdate",
+          object: left,
+          fields,
+          span: mergeSpan(left.span, rbrace.span),
+        };
+      }
     }
-    const rbrace = peek(state);
-    if (rbrace.kind === "rbrace") advance(state);
-    return {
-      kind: "withUpdate",
-      object: left,
-      fields,
-      span: mergeSpan(left.span, rbrace.span),
-    };
+    // Not a RecordUpdate — { already consumed; push diagnostic and bail
+    state.diagnostics.push({
+      code: "TANGLE_PARSE_UNEXPECTED_TOKEN",
+      message: "Unexpected { — struct updates must follow an expression: expr { field: value }",
+      span: token.span,
+    });
+    return left;
+  }
+
+  // Pipe operator: x |> f(y) desugars to f(x, y)
+  if (token.kind === "pipeOp") {
+    advance(state); // |>
+    const right = parseExpr(state, 2); // same precedence as ||
+    return { kind: "pipe", left, right, span: mergeSpan(left.span, right.span) };
   }
 
   // Binary operators (via Pratt)

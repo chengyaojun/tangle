@@ -12,7 +12,7 @@ export type TokenKind =
   | "if"
   | "else"
   | "this"
-  | "with"
+  | "pipeOp"
   | "dot"
   | "comma"
   | "colon"
@@ -58,19 +58,18 @@ const KEYWORDS: Record<string, TokenKind> = {
   if: "if",
   else: "else",
   this: "this",
-  with: "with",
   true: "true",
   false: "false",
 };
 
 const MULTI_CHAR_OPS: Record<string, Record<string, TokenKind>> = {
-  "=": { "=": "eqeq", ">": "fatArrow" },
+  "=": { "=": "eqeq" },
   "!": { "=": "neq" },
   "<": { "=": "lte" },
   ">": { "=": "gte" },
   "&": { "&": "and" },
-  "|": { "|": "or" },
-  "-": { ">": "arrow" },
+  "|": { "|": "or", ">": "pipeOp" },
+  "-": { ">": "fatArrow" },
 };
 
 function isDigit(ch: string): boolean {

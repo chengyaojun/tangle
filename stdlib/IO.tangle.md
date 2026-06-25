@@ -2,7 +2,7 @@
 
 ### IOUtils
 
-#### IOUtils -> 读文件 (readFile)
+#### 读文件 (readFile)
 @export
 * `path`: file path (String)
 
@@ -10,7 +10,7 @@
 return fs.readFileSync(path, "utf-8")
 ```
 
-#### IOUtils -> 写文件 (writeFile)
+#### 写文件 (writeFile)
 @export
 * `path`: file path (String)
 * `content`: content (String)

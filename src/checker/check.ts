@@ -85,7 +85,7 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
       return [expr.op === "!" ? { kind: "primitive", name: "Bool" } : { kind: "primitive", name: "Int" }, diags];
     }
 
-    case "withUpdate": {
+    case "recordUpdate": {
       const [objType, objDiags] = checkExpression(expr.object, env);
       diags.push(...objDiags);
       if (objType.kind === "struct") {
@@ -99,8 +99,16 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
         }
         return [objType, diags];
       }
-      diags.push({ code: "TANGLE_TYPE_NOT_STRUCT", message: "with-update requires a struct type", span: expr.span });
+      diags.push({ code: "TANGLE_TYPE_NOT_STRUCT", message: "record update requires a struct type", span: expr.span });
       return [objType, diags];
+    }
+
+    case "pipe": {
+      const [, leftDiags] = checkExpression(expr.left, env);
+      diags.push(...leftDiags);
+      const [rightType, rightDiags] = checkExpression(expr.right, env);
+      diags.push(...rightDiags);
+      return [rightType, diags];
     }
 
     case "if": {

@@ -17,7 +17,7 @@ describe("compileToIR", () => {
       file: "simple.md",
       source: `### Calc
 
-#### Calc -> add (add)
+#### add (add)
 @export
 * \`a\`: first (Int)
 * \`b\`: second (Int)
