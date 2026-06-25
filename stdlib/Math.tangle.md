@@ -1,0 +1,20 @@
+# Math
+
+### MathUtils
+
+#### MathUtils -> 绝对值 (abs)
+@export
+* `n`: number (Int)
+
+```@tangle
+if (n < 0) -n else n
+```
+
+#### MathUtils -> 最小值 (min)
+@export
+* `a`: first (Int)
+* `b`: second (Int)
+
+```@tangle
+if (a < b) a else b
+```
