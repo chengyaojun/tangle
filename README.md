@@ -166,6 +166,37 @@ tangle/
 
 ---
 
+## Roadmap
+
+### ✅ Track A — TypeScript Bootstrap (0.x) — Complete
+
+All six phases implemented. JS/TS codegen only. Semantic validation + business MVP.
+
+| Phase | Status | Deliverable |
+|-------|--------|-------------|
+| A1 — Compiler Frontend | ✅ | Markdown → `TangleModule` DSL |
+| A2 — Parser & Type Checker | ✅ | `@tangle` code parser, static type system |
+| A3 — Error Semantics | ✅ | `?` propagation, `match` exhaustiveness, `panic` |
+| A4 — Rule Graph IR | ✅ | Unified IR, `Rule:` lowering (flow/table/tree/toggle) |
+| A5 — JS Codegen & CLI | ✅ | IR → JS, `tangle run`, `tangle test` |
+| A6 — Stdlib & MVP | ✅ | 7 stdlib modules, order service example |
+
+### ⬜ Track B — Rust Authority (1.0)
+
+Official `tangle-cli` in Rust once semantic baseline is frozen:
+
+- Rust compiler skeleton matching TS semantics
+- Differential testing against TS reference
+- Python / Go codegen
+- Cross-host stdlib consistency suite
+- Incremental compilation, IR caching, LSP, doc generation
+
+### 🔮 2.0 — Self-Hosting
+
+Long-term: write the Tangle compiler in Tangle itself. Rust edition becomes the bootstrap tool.
+
+---
+
 ## Standard Library
 
 | Module | Types / Functions |

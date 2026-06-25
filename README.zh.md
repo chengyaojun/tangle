@@ -166,6 +166,37 @@ tangle/
 
 ---
 
+## 路线图
+
+### ✅ Track A — TypeScript 引导期 (0.x) — 已完成
+
+全部六个阶段已实现。仅 JS/TS codegen。语义验证 + 业务 MVP。
+
+| 阶段 | 状态 | 产出 |
+|------|------|------|
+| A1 — 编译前端 | ✅ | Markdown → `TangleModule` DSL |
+| A2 — 解析器与类型检查 | ✅ | `@tangle` 代码解析、静态类型系统 |
+| A3 — 错误语义 | ✅ | `?` 传播、`match` 穷举、`panic` |
+| A4 — Rule Graph IR | ✅ | 统一 IR、`Rule:` lowering（flow/table/tree/toggle） |
+| A5 — JS Codegen & CLI | ✅ | IR → JS、`tangle run`、`tangle test` |
+| A6 — 标准库与 MVP | ✅ | 7 个标准库模块、订单服务示例 |
+
+### ⬜ Track B — Rust 权威期 (1.0)
+
+语义基线冻结后，用 Rust 实现官方 `tangle-cli`：
+
+- Rust 编译器骨架（对齐 TS 版语义）
+- 差分测试（Rust vs TS 参考实现）
+- Python / Go codegen
+- 跨宿主标准库一致性测试
+- 增量编译、IR 缓存、LSP、文档生成
+
+### 🔮 2.0 — 自举
+
+远期目标：用 Tangle 编写 Tangle 编译器。Rust 版降级为 bootstrap 工具。
+
+---
+
 ## 标准库
 
 | 模块 | 类型 / 函数 |
