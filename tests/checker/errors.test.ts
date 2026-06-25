@@ -17,16 +17,10 @@ describe("ErrorRegistry", () => {
     expect(reg.isError("User")).toBe(false);
   });
 
-  it("collects error variants from @error directives", () => {
+  it("collects errors from Error: prefix headings", () => {
     const reg = new ErrorRegistry();
-    reg.collectFromDirectives([
-      {
-        kind: "error",
-        raw: '@error PayFailed("支付失败", code: Int)',
-        name: "PayFailed",
-        args: '"支付失败", code: Int',
-        span: { file: "t.md", startLine: 1, startColumn: 1, endLine: 1, endColumn: 40 },
-      },
+    reg.collectFromHeadings([
+      { title: "Error: PayFailed" },
     ]);
     expect(reg.isError("PayFailed")).toBe(true);
   });

@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 
     console.log(result.js);
   } else if (command === "test") {
-    console.log("Tangle test — collecting @test directives...");
+    console.log("Tangle test — collecting Test: directives...");
     // For now, test just validates compilation
     const filterIdx = args.indexOf("--filter");
     const pattern = filterIdx >= 0 ? args[filterIdx + 1] : undefined;

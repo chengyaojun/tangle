@@ -36,10 +36,7 @@ export function checkModule(module: TangleModule): CheckedModule {
   const allDiagnostics: TangleDiagnostic[] = [...module.diagnostics];
 
   const errorRegistry = new ErrorRegistry();
-  // Collect @error directives from all headings
-  for (const heading of module.headings) {
-    errorRegistry.collectFromDirectives(heading.directives);
-  }
+  errorRegistry.collectFromHeadings(module.headings);
 
   for (const parsed of parsedBlocks) {
     const heading = module.headings.find(h => h.id === parsed.headingId);

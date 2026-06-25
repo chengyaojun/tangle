@@ -1468,3 +1468,4 @@ console.log(mod.symbols);
 - 占位符扫描：计划中的每个步骤都包含实际文件、代码片段、命令和预期结果。
 - 类型一致性：`HeadingRole`、`TangleModule`、`TangleHeading`、`TangleDirective`、`TangleSymbol` 在各任务中保持同名同义。
 - 验证命令：每个任务至少运行相关 Vitest 文件，最终运行 `npm test` 和 `npm run typecheck`。
+- (8) 零指令化：消灭最后 8 个 @ 指令。

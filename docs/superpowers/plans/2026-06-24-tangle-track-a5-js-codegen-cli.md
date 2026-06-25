@@ -243,3 +243,4 @@ error[TANGLE_TYPE_MISMATCH]: Operator + requires matching types
 - 明确排除：TypeScript 声明文件生成、source map 生成、多文件项目编译、watch 模式
 - 占位符扫描：无 TODO
 - 向后兼容：不修改 A1-A4 的模块
+- (8) 零指令化：消灭最后 8 个 @ 指令。

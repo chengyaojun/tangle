@@ -10,7 +10,6 @@ import type {
 } from "../model.js";
 import { parseMarkdown } from "../markdown/parseMarkdown.js";
 import { collectLinks, isTangleCodeBlock, parseParamItem, plainText } from "./blocks.js";
-import { parseDirectiveLine } from "./directives.js";
 import { headingRoleForDepth, parseHeadingText } from "./headings.js";
 import { spanFromNode } from "./sourceMap.js";
 
@@ -84,24 +83,7 @@ function buildHeading(
 
   for (const child of body) {
     if (child.type === "paragraph") {
-      const text = plainText(child).trim();
-      if (text.startsWith("@")) {
-        try {
-          directives.push(parseDirectiveLine(text, spanFromNode(file, child)));
-        } catch (error) {
-          diagnostics.push({
-            code: "TANGLE_UNKNOWN_DIRECTIVE",
-            message: error instanceof Error ? error.message : String(error),
-            span: spanFromNode(file, child)
-          });
-        }
-      } else if (/\s@[A-Za-z]/.test(text)) {
-        diagnostics.push({
-          code: "TANGLE_INVALID_DIRECTIVE_POSITION",
-          message: "Tangle directives must appear directly under a heading or directly above their target block",
-          span: spanFromNode(file, child)
-        });
-      }
+      // @-directives have been eliminated; all @-text is ordinary prose
     }
 
     if (child.type === "list") {

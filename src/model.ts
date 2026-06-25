@@ -14,15 +14,7 @@ export type HeadingRole =
   | "semantic-section"
   | "semantic-atom";
 
-export type DirectiveKind =
-  | "deprecated"
-  | "test"
-  | "hideCode"
-  | "error"
-  | "rule.table"
-  | "rule.tree"
-  | "rule.toggle"
-  | "rule.flow";
+export type DirectiveKind = never;
 
 export type TangleDirective = {
   kind: DirectiveKind;

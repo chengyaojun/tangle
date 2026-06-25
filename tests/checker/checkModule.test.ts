@@ -25,18 +25,6 @@ describe("checkModule (full pipeline)", () => {
     });
   });
 
-  it("checkModule preserves A1 diagnostics", () => {
-    const mod = compileModule({
-      file: "bad.md",
-      source: `# Bad
-
-这是一段普通说明，里面出现 @deprecated 是非法的。
-`
-    });
-    const checked = checkModule(mod);
-    expect(checked.diagnostics.some(d => d.code === "TANGLE_INVALID_DIRECTIVE_POSITION")).toBe(true);
-  });
-
   it("reports type errors for unknown field access", () => {
     const mod = compileModule({
       file: "bad.md",

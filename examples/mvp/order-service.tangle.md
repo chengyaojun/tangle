@@ -14,8 +14,8 @@ return Order { id: id, amount: amount, status: "created" }
 ```
 
 #### 确认支付 (confirm)
-@error PayFailed
-@error Timeout
+##### Error: PayFailed
+##### Error: Timeout
 * `order`: Order to confirm
 
 ```@tangle

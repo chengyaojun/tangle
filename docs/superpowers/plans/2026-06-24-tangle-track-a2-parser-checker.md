@@ -2635,3 +2635,4 @@ export type { CheckedModule } from "./checker/checkModule.js";
 - 类型一致性：所有类型名跨任务一致（`Expr`, `Stmt`, `TypeExpr`, `Type`, `TypeEnv`, `CheckedModule` 等）
 - 验证命令：每个任务含 `npm test -- <specific>` 和 `npm run typecheck`
 - 向后兼容：不修改 `src/model.ts`，不修改 `compileModule` 签名或行为。A1 测试全部继续通过。
+- (8) 零指令化：消灭最后 8 个 @ 指令。

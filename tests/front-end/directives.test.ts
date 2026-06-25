@@ -1,63 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { compileModule, parseDirectiveLine } from "../../src/index";
+import { parseDirectiveLine, compileModule } from "../../src/index";
 
-describe("parseDirectiveLine", () => {
-  it("rejects @export as unknown directive", () => {
-    expect(() =>
-      parseDirectiveLine("@export", {
-        file: "main.md",
-        startLine: 2,
-        startColumn: 1,
-        endLine: 2,
-        endColumn: 8
-      })
-    ).toThrow("Unknown Tangle directive");
+describe("zero-directive language", () => {
+  it("rejects all @-prefixed text as unknown", () => {
+    expect(() => parseDirectiveLine("@anything", {
+      file: "m.md", startLine: 1, startColumn: 1, endLine: 1, endColumn: 10
+    })).toThrow("Unknown Tangle directive");
   });
 
-  it("parses error directives with names and args", () => {
-    const directive = parseDirectiveLine('@error PayFailed("支付失败", code: Int)', {
-      file: "pay.md",
-      startLine: 3,
-      startColumn: 1,
-      endLine: 3,
-      endColumn: 39
-    });
-
-    expect(directive).toMatchObject({
-      kind: "error",
-      name: "PayFailed",
-      args: '"支付失败", code: Int'
-    });
-  });
-
-  it("rejects unknown directives", () => {
-    expect(() =>
-      parseDirectiveLine("@unknown", {
-        file: "main.md",
-        startLine: 1,
-        startColumn: 1,
-        endLine: 1,
-        endColumn: 9
-      })
-    ).toThrow("Unknown Tangle directive");
-  });
-});
-
-describe("directive placement", () => {
-  it("reports directives embedded in ordinary paragraphs", () => {
+  it("treats @-text in paragraphs as ordinary prose", () => {
     const mod = compileModule({
-      file: "bad.md",
-      source: `# Bad
-
-这是一段普通说明，里面出现 @deprecated 是非法的。
+      file: "ok.md",
+      source: `# OK
+普通段落中有 @something 不会报错。
 `
     });
-
-    expect(mod.diagnostics).toEqual([
-      expect.objectContaining({
-        code: "TANGLE_INVALID_DIRECTIVE_POSITION",
-        message: "Tangle directives must appear directly under a heading or directly above their target block"
-      })
-    ]);
+    expect(mod.diagnostics.filter(d => d.code === "TANGLE_INVALID_DIRECTIVE_POSITION")).toHaveLength(0);
   });
 });

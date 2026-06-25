@@ -1,4 +1,4 @@
-import type { TangleDirective, SourceSpan } from "../model.js";
+import type { SourceSpan } from "../model.js";
 import type { Type } from "./types.js";
 
 export type ErrorVariant = {
@@ -26,25 +26,13 @@ export class ErrorRegistry {
     return this.variants.has(name);
   }
 
-  collectFromDirectives(directives: TangleDirective[]): void {
-    for (const d of directives) {
-      if (d.kind === "error" && d.name) {
-        const fields: Record<string, Type> = {};
-        if (d.args) {
-          const parts = d.args.split(",").map((s) => s.trim());
-          for (const part of parts) {
-            const colonIdx = part.lastIndexOf(":");
-            if (colonIdx > 0) {
-              const fieldName = part
-                .slice(0, colonIdx)
-                .trim()
-                .replace(/^["']|["']$/g, "");
-              const typeName = part.slice(colonIdx + 1).trim();
-              fields[fieldName] = typeNameToPrimitive(typeName);
-            }
-          }
-        }
-        this.register(d.name, fields, d.span);
+  collectFromHeadings(headings: { title: string }[]): void {
+    for (const h of headings) {
+      const match = h.title.match(/^Error:\s*(.+)$/);
+      if (match) {
+        const rest = match[1]!.trim();
+        const symMatch = rest.match(/\(([A-Za-z_][A-Za-z0-9_]*)\)/);
+        this.register(symMatch ? symMatch[1]! : rest, {});
       }
     }
   }
