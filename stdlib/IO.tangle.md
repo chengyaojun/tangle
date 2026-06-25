@@ -2,14 +2,14 @@
 
 ### IOUtils
 
-#### 读文件 (readFile)
+#### readFile
 * `path`: file path (String)
 
 ```@tangle
 return fs.readFileSync(path, "utf-8")
 ```
 
-#### 写文件 (writeFile)
+#### writeFile
 * `path`: file path (String)
 * `content`: content (String)
 

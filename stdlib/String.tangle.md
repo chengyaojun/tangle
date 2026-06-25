@@ -2,14 +2,14 @@
 
 ### StringUtils
 
-#### 长度 (length)
+#### length
 * `s`: input string (String)
 
 ```@tangle
 return s.length
 ```
 
-#### 拼接 (concat)
+#### concat
 * `a`: first (String)
 * `b`: second (String)
 

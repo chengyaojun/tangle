@@ -1,9 +1,9 @@
 # Map
 
-### Map (Map)
+### Map
 * `entries`: key-value pairs (Array<{key: K, value: V}>)
 
-#### 获取 (get)
+#### get
 * `key`: lookup key (K)
 
 ```@tangle

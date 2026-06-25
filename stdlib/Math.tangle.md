@@ -2,14 +2,14 @@
 
 ### MathUtils
 
-#### 绝对值 (abs)
+#### abs
 * `n`: number (Int)
 
 ```@tangle
 if (n < 0) -n else n
 ```
 
-#### 最小值 (min)
+#### min
 * `a`: first (Int)
 * `b`: second (Int)
 
