@@ -30,7 +30,7 @@ describe("checkModule (full pipeline)", () => {
       file: "bad.md",
       source: `# Bad
 
-这是一段普通说明，里面出现 @entry 是非法的。
+这是一段普通说明，里面出现 @deprecated 是非法的。
 `
     });
     const checked = checkModule(mod);

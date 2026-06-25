@@ -1,7 +1,6 @@
 import type { DirectiveKind, SourceSpan, TangleDirective } from "../model.js";
 
 const SIMPLE_DIRECTIVES: Record<string, DirectiveKind> = {
-  "@entry": "entry",
   "@hideCode": "hideCode",
   "@rule.table": "rule.table",
   "@rule.tree": "rule.tree",

@@ -182,19 +182,18 @@ function buildSymbols(headings: TangleHeading[]): TangleSymbol[] {
     const name = heading.symbolName ?? heading.title;
     const isPrivate = name.startsWith('_');
     const exported = isPrivate ? false
-      : heading.directives.some(d => d.kind === "entry") ? true
       : heading.role === "type" || heading.role === "callable";
 
     if (heading.role === "type") {
       return { name, kind: "type", exported, headingId: heading.id, span: heading.span };
     }
 
-    if (heading.role === "callable") {
-      return { name, kind: "callable", exported, headingId: heading.id, span: heading.span };
+    if (name === "main" && heading.role === "callable") {
+      return { name, kind: "entry", exported: true, headingId: heading.id, span: heading.span };
     }
 
-    if (heading.role === "program" && heading.directives.some((directive) => directive.kind === "entry")) {
-      return { name, kind: "entry", exported: true, headingId: heading.id, span: heading.span };
+    if (heading.role === "callable") {
+      return { name, kind: "callable", exported, headingId: heading.id, span: heading.span };
     }
 
     return { name, kind: "semantic-internal", exported: false, headingId: heading.id, span: heading.span };
@@ -220,13 +219,13 @@ function stableHeadingId(text: string): string {
 
 function validateSymbolRules(headings: TangleHeading[], diagnostics: TangleDiagnostic[]): void {
   const entryHeadings = headings.filter((heading) =>
-    heading.directives.some((directive) => directive.kind === "entry")
+    heading.symbolName === "main" || heading.title === "main"
   );
 
   if (entryHeadings.length > 1) {
     diagnostics.push({
       code: "TANGLE_DUPLICATE_ENTRY",
-      message: "A Tangle program must declare exactly one @entry",
+      message: "A Tangle program must declare exactly one main function",
       span: entryHeadings[1]!.span
     });
   }

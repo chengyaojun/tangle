@@ -2,17 +2,25 @@ import { describe, expect, it } from "vitest";
 import { compileModule } from "../../src/index";
 
 describe("symbol diagnostics", () => {
-  it("allows exactly one @entry", () => {
+  it("detects main function as entry point", () => {
     const mod = compileModule({
       file: "main.md",
-      source: `# App
-@entry
-
-#### Start (start)
-@entry
+      source: `#### main
 `
     });
+    const entry = mod.symbols.find(s => s.kind === "entry");
+    expect(entry).toBeDefined();
+    expect(entry?.name).toBe("main");
+  });
 
+  it("reports duplicate main functions", () => {
+    const mod = compileModule({
+      file: "main.md",
+      source: `#### main
+
+#### main
+`
+    });
     expect(mod.diagnostics).toEqual([
       expect.objectContaining({ code: "TANGLE_DUPLICATE_ENTRY" })
     ]);
