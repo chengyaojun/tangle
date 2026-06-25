@@ -1,6 +1,6 @@
 # Tangle Track A6: Standard Library & Business MVP 实现计划
 
-> **语法精炼勘误（2026-06-25）：** (1) `with { }` → 无关键字大括号更新。(2) `Struct -> method` → 隐式方法绑定。(3) `=>` → `->`。(4) 新增 `|>` 管道。(5) 新增标题大小写对齐契约。详见设计规格 §3.2。
+> **语法精炼勘误（2026-06-25）：** (1) `with { }` → 无关键字大括号更新。(2) `Struct -> method` → 隐式方法绑定。(3) `=>` → `->`。(4) 新增 `|>` 管道。(5) 新增标题大小写对齐契约。(6) 移除 @export，改为下划线隐式私有。详见设计规格 §3.2。
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 

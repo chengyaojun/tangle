@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { compileModule, parseDirectiveLine } from "../../src/index";
 
 describe("parseDirectiveLine", () => {
-  it("parses simple directives", () => {
-    const directive = parseDirectiveLine("@export", {
-      file: "main.md",
-      startLine: 2,
-      startColumn: 1,
-      endLine: 2,
-      endColumn: 8
-    });
-
-    expect(directive).toMatchObject({ kind: "export", raw: "@export" });
+  it("rejects @export as unknown directive", () => {
+    expect(() =>
+      parseDirectiveLine("@export", {
+        file: "main.md",
+        startLine: 2,
+        startColumn: 1,
+        endLine: 2,
+        endColumn: 8
+      })
+    ).toThrow("Unknown Tangle directive");
   });
 
   it("parses error directives with names and args", () => {
@@ -49,7 +49,7 @@ describe("directive placement", () => {
       file: "bad.md",
       source: `# Bad
 
-这是一段普通说明，里面出现 @export 是非法的。
+这是一段普通说明，里面出现 @entry 是非法的。
 `
     });
 

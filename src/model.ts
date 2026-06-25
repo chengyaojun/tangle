@@ -15,7 +15,6 @@ export type HeadingRole =
   | "semantic-atom";
 
 export type DirectiveKind =
-  | "export"
   | "entry"
   | "deprecated"
   | "test"

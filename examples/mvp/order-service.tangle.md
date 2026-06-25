@@ -2,13 +2,11 @@
 @entry
 
 ### Order
-@export
 * `id`: order ID (String)
 * `amount`: order amount (Int)
 * `status`: order status (String)
 
 #### 创建订单 (create)
-@export
 * `id`: order ID (String)
 * `amount`: amount (Int)
 
@@ -17,7 +15,6 @@ return Order { id: id, amount: amount, status: "created" }
 ```
 
 #### 确认支付 (confirm)
-@export
 @error PayFailed
 @error Timeout
 * `order`: Order to confirm

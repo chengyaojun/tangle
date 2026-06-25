@@ -6,7 +6,7 @@ describe("full pipeline", () => {
     const result = compile(`### Calc
 
 #### Calc -> add (add)
-@export
+
 * \`a\`: first (Int)
 * \`b\`: second (Int)
 

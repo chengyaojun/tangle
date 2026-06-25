@@ -179,8 +179,11 @@ function buildHeading(
 
 function buildSymbols(headings: TangleHeading[]): TangleSymbol[] {
   return headings.map((heading) => {
-    const exported = heading.directives.some((directive) => directive.kind === "export" || directive.kind === "entry");
     const name = heading.symbolName ?? heading.title;
+    const isPrivate = name.startsWith('_');
+    const exported = isPrivate ? false
+      : heading.directives.some(d => d.kind === "entry") ? true
+      : heading.role === "type" || heading.role === "callable";
 
     if (heading.role === "type") {
       return { name, kind: "type", exported, headingId: heading.id, span: heading.span };
@@ -228,17 +231,6 @@ function validateSymbolRules(headings: TangleHeading[], diagnostics: TangleDiagn
     });
   }
 
-  for (const heading of headings) {
-    const exported = heading.directives.some((directive) => directive.kind === "export");
-    const exportable = heading.role === "type" || heading.role === "callable";
-    if (exported && !exportable) {
-      diagnostics.push({
-        code: "TANGLE_INVALID_EXPORT_LEVEL",
-        message: "@export is only valid on type and callable headings",
-        span: heading.span
-      });
-    }
-  }
 }
 
 function findInlineCode(node: MarkdownNode): MarkdownNode | null {

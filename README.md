@@ -12,11 +12,9 @@ const mod = compileModule({
   source: `# 用户中心
 
 ### User
-@export
 * \`email\`: 邮箱 (String)
 
 #### 激活 (activate)
-@export
 
 \`\`\`@tangle
 return this { is_active: true }

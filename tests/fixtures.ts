@@ -5,12 +5,10 @@ export const USER_MODULE = `# 用户中心
 [Notify](./notify.md)
 
 ### User
-@export
 * \`id\`: 用户 ID (Int)
 * \`email\`: 邮箱 (String)
 
 #### 激活 (activate)
-@export
 
 \`\`\`@tangle
 return this { is_active: true }
@@ -30,12 +28,10 @@ export const USER_MODULE_WITH_INTERFACE = `# User Service
 * \`msg\`: message (String)
 
 ### User
-@export
 * \`id\`: user ID (Int)
 * \`email\`: email (String)
 
 #### activate (activate)
-@export
 * \`reason\`: activation reason (String)
 
 \`\`\`@tangle

@@ -58,7 +58,6 @@ describe("compileModule", () => {
     const mod = compileModule({
       file: "ok.md",
       source: `#### 确认支付
-@export
 
 \`\`\`@tangle
 return true

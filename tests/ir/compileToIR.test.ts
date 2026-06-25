@@ -18,7 +18,7 @@ describe("compileToIR", () => {
       source: `### Calc
 
 #### add (add)
-@export
+
 * \`a\`: first (Int)
 * \`b\`: second (Int)
 

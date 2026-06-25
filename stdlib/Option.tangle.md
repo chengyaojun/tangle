@@ -5,18 +5,15 @@
 Option represents a value that may or may not exist.
 
 ### Some (Some)
-@export
 * `value`: the contained value (T)
 
 #### 取值 (unwrap)
-@export
 
 ```@tangle
 return value
 ```
 
 ### None (None)
-@export
 
 #### 取值 (unwrap)
 

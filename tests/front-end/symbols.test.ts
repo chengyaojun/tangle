@@ -18,18 +18,15 @@ describe("symbol diagnostics", () => {
     ]);
   });
 
-  it("rejects exported semantic micro headings", () => {
+  it("marks underscore-prefixed symbols as private", () => {
     const mod = compileModule({
-      file: "user.md",
-      source: `# UserModule
+      file: "test.md",
+      source: `### _InternalHelper
 
-##### 前置条件
-@export
+#### _reset
 `
     });
-
-    expect(mod.diagnostics).toEqual([
-      expect.objectContaining({ code: "TANGLE_INVALID_EXPORT_LEVEL" })
-    ]);
+    const privType = mod.symbols.find(s => s.name === "_InternalHelper");
+    expect(privType?.exported).toBe(false);
   });
 });
