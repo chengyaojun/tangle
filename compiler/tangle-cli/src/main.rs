@@ -10,8 +10,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a Tangle program
+    /// Compile and execute a Tangle program
     Run {
+        file: String,
+        /// Target language (js, py, go) [default: js]
+        #[arg(long, default_value = "js")]
+        target: String,
+        /// Enable incremental compilation
+        #[arg(long)]
+        incremental: bool,
+    },
+    /// Compile a Tangle program (output generated code)
+    Build {
         file: String,
         /// Emit IR JSON instead of target code
         #[arg(long)]
@@ -19,7 +29,7 @@ enum Command {
         /// Target language (js, py, go) [default: js]
         #[arg(long, default_value = "js")]
         target: String,
-        /// Enable incremental compilation (skip unchanged files)
+        /// Enable incremental compilation
         #[arg(long)]
         incremental: bool,
     },
@@ -41,8 +51,11 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Command::Run { file, emit_ir, target, incremental } => {
-            cli::run::execute(cli::run::RunOptions { file, emit_ir, target, incremental });
+        Command::Run { file, target, incremental } => {
+            cli::run::run(cli::run::BuildOptions { file, emit_ir: false, target, incremental });
+        }
+        Command::Build { file, emit_ir, target, incremental } => {
+            cli::run::build(cli::run::BuildOptions { file, emit_ir, target, incremental });
         }
         Command::Test { filter } => cli::test::execute(filter.as_deref()),
         Command::Lsp => {

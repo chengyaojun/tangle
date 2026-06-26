@@ -5,14 +5,41 @@ use crate::diagnostic::render_diagnostics;
 use std::fs;
 use std::path::Path;
 
-pub struct RunOptions {
+pub struct BuildOptions {
     pub file: String,
     pub emit_ir: bool,
     pub target: String,
     pub incremental: bool,
 }
 
-pub fn execute(opts: RunOptions) {
+/// `tangle run` — compile and execute
+pub fn run(opts: BuildOptions) {
+    let (graph, source) = compile_file(&opts);
+    let module_name = module_name_from_file(&opts.file);
+
+    if opts.emit_ir {
+        println!("{}", crate::codegen::ir_json::emit_ir_json(&graph));
+        return;
+    }
+    let code = emit_code(&opts.target, &graph, module_name);
+    execute_code(&opts.target, &code);
+}
+
+/// `tangle build` — compile only, output source
+pub fn build(opts: BuildOptions) {
+    let (graph, _source) = compile_file(&opts);
+    let module_name = module_name_from_file(&opts.file);
+
+    if opts.emit_ir {
+        println!("{}", crate::codegen::ir_json::emit_ir_json(&graph));
+        return;
+    }
+    let code = emit_code(&opts.target, &graph, module_name);
+    println!("{}", code);
+}
+
+/// Shared compilation: read file, run pipeline, handle cache
+fn compile_file(opts: &BuildOptions) -> (crate::ir::graph::RuleGraph, String) {
     let path = Path::new(&opts.file);
     if !path.exists() {
         eprintln!("Error: file '{}' not found", opts.file);
@@ -27,12 +54,6 @@ pub fn execute(opts: RunOptions) {
         }
     };
 
-    let module_name = Path::new(&opts.file)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main");
-
-    // Check incremental cache if enabled
     if opts.incremental {
         let cache_dir = Path::new(".cache");
         let mut inc_cache = crate::incremental::cache::IncrementalCache::new(cache_dir);
@@ -40,40 +61,17 @@ pub fn execute(opts: RunOptions) {
         let fp = crate::incremental::fingerprint::source_fingerprint(&source);
 
         if !inc_cache.needs_recompile(&opts.file, fp) {
-            // File unchanged — try loading cached IR
             if let Some(cached_graph) = ir_cache.load(&opts.file) {
-                if opts.emit_ir {
-                    println!("{}", crate::codegen::ir_json::emit_ir_json(&cached_graph));
-                    return;
-                }
-                let code = emit_code(&opts.target, &cached_graph, module_name);
-                execute_code(&opts.target, &code);
-                return;
+                return (cached_graph, source);
             }
         }
 
-        // Run full pipeline
         let graph = run_pipeline(&opts.file, &source);
-
-        // Save IR to cache for next run
         ir_cache.save(&opts.file, &graph);
-
-        if opts.emit_ir {
-            println!("{}", crate::codegen::ir_json::emit_ir_json(&graph));
-            return;
-        }
-        let code = emit_code(&opts.target, &graph, module_name);
-        execute_code(&opts.target, &code);
+        (graph, source)
     } else {
-        // Non-incremental: run full pipeline every time
         let graph = run_pipeline(&opts.file, &source);
-
-        if opts.emit_ir {
-            println!("{}", crate::codegen::ir_json::emit_ir_json(&graph));
-            return;
-        }
-        let code = emit_code(&opts.target, &graph, module_name);
-        execute_code(&opts.target, &code);
+        (graph, source)
     }
 }
 
@@ -144,6 +142,10 @@ fn execute_code(target: &str, code: &str) {
         }
         _ => println!("{}", code),
     }
+}
+
+fn module_name_from_file(file: &str) -> &str {
+    Path::new(file).file_stem().and_then(|s| s.to_str()).unwrap_or("main")
 }
 
 /// Dispatch codegen by target language
