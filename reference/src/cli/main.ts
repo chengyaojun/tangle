@@ -23,9 +23,11 @@ async function main(): Promise<void> {
   const command = args[0];
 
   if (command === "run") {
-    const filePath = args[1];
+    const emitIr = args.includes("--emit-ir");
+    const fileArgs = args.slice(1).filter(a => !a.startsWith("--"));
+    const filePath = fileArgs[0];
     if (!filePath) {
-      console.error("Error: No file specified. Usage: tangle run <file.md>");
+      console.error("Error: No file specified. Usage: tangle run <file.md> [--emit-ir]");
       process.exit(1);
     }
     const absPath = resolve(filePath);
@@ -47,7 +49,11 @@ async function main(): Promise<void> {
       printDiagnostics(result.diagnostics);
     }
 
-    console.log(result.js);
+    if (emitIr) {
+      console.log(JSON.stringify(result.graph, null, 2));
+    } else {
+      console.log(result.js);
+    }
   } else if (command === "test") {
     console.log("Tangle test — collecting Test: directives...");
     // For now, test just validates compilation

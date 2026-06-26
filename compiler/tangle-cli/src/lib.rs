@@ -1,0 +1,14 @@
+pub mod model;
+pub mod ast;
+pub mod diagnostic;
+pub mod frontend;
+pub mod markdown;
+pub mod parser;
+pub mod checker;
+pub mod ir;
+pub mod codegen;
+pub mod cli;
+pub mod stdlib;
+pub mod incremental;
+pub mod lsp;
+pub mod docgen;
