@@ -240,19 +240,32 @@ JS/TS codegen only. Semantic validation + business MVP.
 | A5 — JS Codegen & CLI | ✅ | IR → JS, `tangle run`, `tangle test` |
 | A6 — Stdlib & MVP | ✅ | 7 stdlib modules, order service example |
 
-### ✅ Track B — Rust Authority (1.0) — Phase B1 Complete
+### ✅ Track B — Rust Authority (v0.2.0) — Complete
 
 | Phase | Status | Content |
 |-------|--------|---------|
 | B1 — Rust Compiler Skeleton | ✅ | Frontend → Parser → Checker → IR → JS Codegen + CLI |
 | B2 — Differential Testing | ✅ | IR JSON Schema, shared fixtures, TS `--emit-ir` |
 | B3 — Multi-host Codegen | ✅ | Python + Go emitters, `--target` flag |
-| B4 — Standard Library | ✅ | 22 modules (collections/text/IO/system/net/math/concurrency/time/crypto) |
+| B4 — Standard Library | ✅ | 22 modules across 9 categories |
 | B5 — Performance & Toolchain | ✅ | Incremental compilation + IR cache + LSP + Doc HTML |
 
-### 🔮 2.0 — Self-Hosting
+**Post-B5 enhancements (v0.2.x):**
+- On-demand stdlib imports via Markdown links `[fmt](fmt)`
+- Single/multi-function imports: `[println](fmt)`, `[print, println](fmt)`
+- `tangle build` — compile only (like `go build`)
+- `tangle run` — compile + execute in one step
+- Source-text codegen (AST → real code, not comments)
+- Per-module stdlib prelude (only emit what's imported)
 
-Long-term: write the Tangle compiler in Tangle itself. Rust edition becomes the bootstrap tool.
+**Next steps:**
+- Checker stdlib function signature refinement
+- Rule form lowering completeness (AND/OR semantics, priority)
+- AST-based typed codegen translation
+
+### 🔮 2.0 — Self-Hosting (v1.0.0)
+
+Write the Tangle compiler in Tangle itself. Rust edition becomes the bootstrap tool.
 
 ---
 

@@ -239,7 +239,7 @@ tangle lsp                                     # stdio LSP 服务器
 | A5 — JS Codegen & CLI | ✅ | IR → JS、`tangle run`、`tangle test` |
 | A6 — 标准库与 MVP | ✅ | 7 个标准库模块、订单服务示例 |
 
-### ✅ Track B — Rust 权威期 (1.0) — Phase B1 完成
+### ✅ Track B — Rust 权威期 (v0.2.0) — 全部完成
 
 | 阶段 | 状态 | 内容 |
 |------|------|------|
@@ -249,9 +249,22 @@ tangle lsp                                     # stdio LSP 服务器
 | B4 — 标准库 | ✅ | 22 模块 (集合/文本/I/O/系统/网络/数学/并发/时间/加密) |
 | B5 — 性能与工具链 | ✅ | 增量编译 + IR 缓存 + LSP + Doc HTML |
 
-### 🔮 2.0 — 自举
+**B5 后增强 (v0.2.x)：**
+- 按需 stdlib 导入：Markdown 链接 `[fmt](fmt)`
+- 单/多函数导入：`[println](fmt)`、`[print, println](fmt)`
+- `tangle build` — 仅编译输出源码（对标 `go build`）
+- `tangle run` — 编译+执行一步到位
+- 源码直译 codegen（AST → 真实代码，替代注释占位）
+- 按模块 stdlib 预绑（只 emit 实际导入的模块）
 
-远期目标：用 Tangle 编写 Tangle 编译器。
+**后续方向：**
+- Checker stdlib 函数签名细化
+- 规则形式 lowering 完善（AND/OR 语义、优先级）
+- AST 类型化 codegen 翻译
+
+### 🔮 2.0 — 自举 (v1.0.0)
+
+用 Tangle 编写 Tangle 编译器。Rust 版降级为 bootstrap 工具。
 
 ---
 
