@@ -1,0 +1,75 @@
+use serde::{Deserialize, Serialize};
+use crate::model::SourceSpan;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IRNodeKind {
+    Action,
+    Compute,
+    Decision,
+    Terminal,
+    ErrorTerminal,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IRNode {
+    pub id: String,
+    pub kind: IRNodeKind,
+    pub label: String,
+    pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IREdgeKind {
+    Control,
+    Condition,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IREdge {
+    pub from: String,
+    pub to: String,
+    pub kind: IREdgeKind,
+    pub guard: Option<String>,
+    pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IRErrorEdge {
+    pub from: String,
+    pub error_variant: String,
+    pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuleGraph {
+    pub nodes: Vec<IRNode>,
+    pub edges: Vec<IREdge>,
+    pub error_edges: Vec<IRErrorEdge>,
+    pub entry_node_id: String,
+}
+
+pub struct FreshNodeId {
+    counter: u64,
+}
+
+impl FreshNodeId {
+    pub fn new() -> Self { FreshNodeId { counter: 0 } }
+
+    pub fn next(&mut self) -> String {
+        let id = format!("n{}", self.counter);
+        self.counter += 1;
+        id
+    }
+
+    pub fn reset(&mut self) { self.counter = 0; }
+}
+
+pub fn create_graph(entry_node_id: String) -> RuleGraph {
+    RuleGraph {
+        nodes: vec![],
+        edges: vec![],
+        error_edges: vec![],
+        entry_node_id,
+    }
+}
