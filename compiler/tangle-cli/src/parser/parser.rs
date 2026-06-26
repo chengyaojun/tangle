@@ -90,6 +90,20 @@ impl<'a> ParserState<'a> {
 
         loop {
             let op = self.peek().clone();
+            // Stop on delimiters that terminate the current expression.
+            if matches!(
+                op.kind,
+                TokenKind::Eof
+                    | TokenKind::RParen
+                    | TokenKind::RBrace
+                    | TokenKind::RBracket
+                    | TokenKind::Semicolon
+                    | TokenKind::Comma
+                    | TokenKind::Else
+                    | TokenKind::Return
+            ) {
+                break;
+            }
             let bp = bp_of(op.kind);
             // Use < so that same-precedence operators (like PipeOp at bp=0)
             // still enter the match for infix parsing at the top level.
@@ -269,8 +283,8 @@ impl<'a> ParserState<'a> {
         let saved_pos = self.pos;
         let saved_diags_len = self.diagnostics.len();
 
-        // Try: match expr { arms }
-        let expr = self.parse_expression(0)?;
+        // Use min_bp=1 so the scrutinee stops before the opening brace.
+        let expr = self.parse_expression(1)?;
         if self.peek().kind != TokenKind::LBrace {
             // Backtrack: it's just an identifier named "match"
             self.pos = saved_pos;
@@ -324,7 +338,9 @@ impl<'a> ParserState<'a> {
     // ============================================================
 
     fn parse_if_expr(&mut self, if_token: Token) -> Option<Expr> {
-        let condition = self.parse_expression(0)?;
+        // Use min_bp=1 so the condition stops before bp-0 operators
+        // (like record-update brace) and the following then-branch.
+        let condition = self.parse_expression(1)?;
         let then_branch = self.parse_block_or_expr()?;
         let else_branch = if self.peek().kind == TokenKind::Else {
             self.advance();
@@ -826,4 +842,352 @@ pub fn parse_code_body(tokens: &[Token]) -> (CodeBody, Vec<TangleDiagnostic>) {
     let mut parser = ParserState::new(tokens);
     let body = parser.parse_code_body();
     (body, parser.diagnostics)
+}
+
+// ============================================================
+// Tests
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::lexer::tokenize;
+
+    fn parse_expr(source: &str) -> Option<Expr> {
+        let (tokens, _) = tokenize(source, "test.md");
+        parse_expression(&tokens).0
+    }
+
+    fn parse_stmt(source: &str) -> Option<Stmt> {
+        let (tokens, _) = tokenize(source, "test.md");
+        parse_statement(&tokens).0
+    }
+
+    fn parse_body(source: &str) -> CodeBody {
+        let (tokens, _) = tokenize(source, "test.md");
+        parse_code_body(&tokens).0
+    }
+
+    // ----------------------------------------------------------
+    // 1. Integer literal
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_parse_integer_literal() {
+        let expr = parse_expr("42").unwrap();
+        match expr {
+            Expr::Literal(lit) => {
+                assert_eq!(lit.literal_kind, LiteralKind::Number);
+                assert_eq!(lit.value, "42");
+            }
+            _ => panic!("Expected literal, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 2. String literal
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_parse_string_literal() {
+        let expr = parse_expr("\"hello\"").unwrap();
+        match expr {
+            Expr::Literal(lit) => {
+                assert_eq!(lit.literal_kind, LiteralKind::String);
+                assert_eq!(lit.value, "hello");
+            }
+            _ => panic!("Expected literal, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 3. Boolean literals (true / false)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_parse_boolean_literals() {
+        let expr_true = parse_expr("true").unwrap();
+        match expr_true {
+            Expr::Literal(lit) => {
+                assert_eq!(lit.literal_kind, LiteralKind::Boolean);
+                assert_eq!(lit.value, "true");
+            }
+            _ => panic!("Expected literal for true, got {:?}", expr_true),
+        }
+        let expr_false = parse_expr("false").unwrap();
+        match expr_false {
+            Expr::Literal(lit) => {
+                assert_eq!(lit.literal_kind, LiteralKind::Boolean);
+                assert_eq!(lit.value, "false");
+            }
+            _ => panic!("Expected literal for false, got {:?}", expr_false),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 4. Binary expression with correct precedence (1 + 2 * 3)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_binary_precedence() {
+        // 1 + 2 * 3  should parse as  1 + (2 * 3), not (1 + 2) * 3
+        let expr = parse_expr("1 + 2 * 3").unwrap();
+        match expr {
+            Expr::Binary(bin) => {
+                assert_eq!(bin.op, BinaryOp::Add);
+                match &*bin.left {
+                    Expr::Literal(l) => {
+                        assert_eq!(l.literal_kind, LiteralKind::Number);
+                        assert_eq!(l.value, "1");
+                    }
+                    _ => panic!("Expected number literal as left operand"),
+                }
+                match &*bin.right {
+                    Expr::Binary(inner) => {
+                        assert_eq!(inner.op, BinaryOp::Mul);
+                        match &*inner.left {
+                            Expr::Literal(l) => assert_eq!(l.value, "2"),
+                            _ => panic!("Expected 2 inside inner binary"),
+                        }
+                        match &*inner.right {
+                            Expr::Literal(l) => assert_eq!(l.value, "3"),
+                            _ => panic!("Expected 3 inside inner binary"),
+                        }
+                    }
+                    _ => panic!("Expected binary (2*3) as right operand"),
+                }
+            }
+            _ => panic!("Expected binary expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 5. Comparison expression (x == 5)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_comparison_expression() {
+        let expr = parse_expr("x == 5").unwrap();
+        match expr {
+            Expr::Binary(bin) => {
+                assert_eq!(bin.op, BinaryOp::Eq);
+                match &*bin.left {
+                    Expr::Identifier(id) => assert_eq!(id.name, "x"),
+                    _ => panic!("Expected identifier as left operand"),
+                }
+                match &*bin.right {
+                    Expr::Literal(lit) => {
+                        assert_eq!(lit.literal_kind, LiteralKind::Number);
+                        assert_eq!(lit.value, "5");
+                    }
+                    _ => panic!("Expected literal as right operand"),
+                }
+            }
+            _ => panic!("Expected binary expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 6. If expression (if true then 1 else 2)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_if_expression() {
+        let expr = parse_expr("if true 1 else 2").unwrap();
+        match expr {
+            Expr::If(ifx) => {
+                match &*ifx.condition {
+                    Expr::Literal(lit) => {
+                        assert_eq!(lit.literal_kind, LiteralKind::Boolean);
+                        assert_eq!(lit.value, "true");
+                    }
+                    _ => panic!("Expected boolean condition"),
+                }
+                match &*ifx.then_branch {
+                    Expr::Literal(lit) => assert_eq!(lit.value, "1"),
+                    _ => panic!("Expected then-branch literal 1"),
+                }
+                assert!(ifx.else_branch.is_some(), "expected else branch");
+                match &**ifx.else_branch.as_ref().unwrap() {
+                    Expr::Literal(lit) => assert_eq!(lit.value, "2"),
+                    _ => panic!("Expected else-branch literal 2"),
+                }
+            }
+            _ => panic!("Expected if expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 7. Match expression with wildcard arm
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_match_expression_wildcard() {
+        let expr = parse_expr("match x { _ => 0 }").unwrap();
+        match expr {
+            Expr::Match(m) => {
+                match &*m.expr {
+                    Expr::Identifier(id) => assert_eq!(id.name, "x"),
+                    _ => panic!("Expected identifier as match scrutinee"),
+                }
+                assert_eq!(m.arms.len(), 1);
+                assert!(
+                    matches!(m.arms[0].pattern, MatchPattern::Wildcard),
+                    "expected wildcard pattern"
+                );
+                match &m.arms[0].body {
+                    Expr::Literal(lit) => {
+                        assert_eq!(lit.literal_kind, LiteralKind::Number);
+                        assert_eq!(lit.value, "0");
+                    }
+                    _ => panic!("Expected literal body for wildcard arm"),
+                }
+            }
+            _ => panic!("Expected match expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 8. Arrow function (x -> x + 1)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_arrow_function() {
+        let expr = parse_expr("(x) -> x + 1").unwrap();
+        match expr {
+            Expr::Arrow(a) => {
+                assert_eq!(a.params.len(), 1);
+                assert_eq!(a.params[0].name, "x");
+                match &*a.body {
+                    Expr::Binary(bin) => {
+                        assert_eq!(bin.op, BinaryOp::Add);
+                    }
+                    _ => panic!("Expected binary body in arrow"),
+                }
+            }
+            _ => panic!("Expected arrow expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 9. Pipe expression (data |> transform)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_pipe_expression() {
+        let expr = parse_expr("data |> transform").unwrap();
+        match expr {
+            Expr::Pipe(p) => {
+                match &*p.left {
+                    Expr::Identifier(id) => assert_eq!(id.name, "data"),
+                    _ => panic!("Expected identifier as left side of pipe"),
+                }
+                match &*p.right {
+                    Expr::Identifier(id) => assert_eq!(id.name, "transform"),
+                    _ => panic!("Expected identifier as right side of pipe"),
+                }
+            }
+            _ => panic!("Expected pipe expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 10. Error propagation (f()?)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_propagation_expression() {
+        let expr = parse_expr("f()?").unwrap();
+        match expr {
+            Expr::Propagation(p) => {
+                match &*p.expr {
+                    Expr::Call(call) => {
+                        match &*call.callee {
+                            Expr::Identifier(id) => assert_eq!(id.name, "f"),
+                            _ => panic!("Expected identifier callee in propagation"),
+                        }
+                        assert!(call.args.is_empty());
+                    }
+                    _ => panic!("Expected call inside propagation"),
+                }
+            }
+            _ => panic!("Expected propagation expression, got {:?}", expr),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 11. Return statement
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_return_statement() {
+        let stmt = parse_stmt("return 42").unwrap();
+        match stmt {
+            Stmt::Return(ret) => {
+                assert!(ret.value.is_some());
+                match ret.value.unwrap() {
+                    Expr::Literal(lit) => {
+                        assert_eq!(lit.literal_kind, LiteralKind::Number);
+                        assert_eq!(lit.value, "42");
+                    }
+                    _ => panic!("Expected literal return value"),
+                }
+            }
+            _ => panic!("Expected return statement, got {:?}", stmt),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // 12. Let statement with type annotation
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_let_statement_with_type_annotation() {
+        let stmt = parse_stmt("let x: Int = 5").unwrap();
+        match stmt {
+            Stmt::Let(ls) => {
+                assert_eq!(ls.name, "x");
+                assert!(ls.type_annotation.is_some(), "expected type annotation");
+                match ls.type_annotation.unwrap() {
+                    TypeExpr::Named(n) => assert_eq!(n.name, "Int"),
+                    _ => panic!("Expected Named type annotation"),
+                }
+                match ls.value {
+                    Expr::Literal(lit) => {
+                        assert_eq!(lit.literal_kind, LiteralKind::Number);
+                        assert_eq!(lit.value, "5");
+                    }
+                    _ => panic!("Expected literal value in let statement"),
+                }
+            }
+            _ => panic!("Expected let statement, got {:?}", stmt),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Extra: bare return (no value)
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_bare_return_statement() {
+        let stmt = parse_stmt("return").unwrap();
+        match stmt {
+            Stmt::Return(ret) => {
+                assert!(ret.value.is_none(), "bare return should have no value");
+            }
+            _ => panic!("Expected return statement"),
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Extra: parse code body with multiple statements
+    // ----------------------------------------------------------
+
+    #[test]
+    fn test_parse_code_body_multiple_statements() {
+        let body = parse_body("let a = 1; return a");
+        assert_eq!(body.statements.len(), 2);
+        assert!(matches!(body.statements[0], Stmt::Let(_)));
+        assert!(matches!(body.statements[1], Stmt::Return(_)));
+    }
 }
