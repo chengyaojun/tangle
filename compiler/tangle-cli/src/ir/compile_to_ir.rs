@@ -15,7 +15,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
 
     // Lower @tangle code blocks as statements
     for block in &checked.parsed_blocks {
-        let sub_graph = lower_statements(&block.body.statements, &checked.file, &mut id_gen);
+        let sub_graph = lower_statements(&block.body.statements, &block.source, &checked.file, &mut id_gen);
         match &mut merged_graph {
             None => merged_graph = Some(sub_graph),
             Some(ref mut g) => {
@@ -40,15 +40,26 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         }
     }
 
-    let graph = merged_graph.unwrap_or_else(|| {
+    let mut graph = merged_graph.unwrap_or_else(|| {
         let entry_id = id_gen.next();
         let mut g = create_graph(entry_id.clone());
         g.nodes.push(IRNode {
             id: entry_id.clone(), kind: IRNodeKind::Terminal,
-            label: "empty".into(), source_span: None,
+            label: "empty".into(), source_span: None, source_text: None,
         });
         g
     });
+
+    // Collect stdlib import names and alias mappings
+    graph.stdlib_imports = checked.imports.iter()
+        .filter(|imp| !imp.target.contains('/') && !imp.target.contains('\\') && !imp.target.starts_with('.'))
+        .map(|imp| (imp.alias.clone(), imp.target.clone()))
+        .collect();
+    graph.imported_stdlib = graph.stdlib_imports.iter()
+        .map(|(_, target)| target.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
 
     let validate_diags = validate_ir(&graph);
     diagnostics.extend(validate_diags);

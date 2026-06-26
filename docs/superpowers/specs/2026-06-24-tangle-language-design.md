@@ -533,6 +533,26 @@ return receipt
 - 跨宿主标准库一致性测试。
 - 增量编译、IR 缓存、LSP 和文档生成。
 
+### Track B 后续增强
+
+以下功能在 Track B 骨架中已部分实现，需后续完善：
+
+**1. Checker stdlib 函数签名细化**
+- 当前状态：所有 stdlib 函数返回类型统一为 `String`，参数列表为空
+- 目标：每个 stdlib 函数的精确签名（参数类型、返回类型）
+- 影响：消除 `TANGLE_TYPE_ERROR` 误报（如 `print()` 是 void 函数，不应参与二元运算类型检查）
+- 实现要点：在 `stdlib_ops()` 中为每个函数标注精确的 `CallableSignature { params: [(name, Type)], returns: Type }`
+
+**2. 规则形式 lowering 完善**
+- 当前状态：四种规则形式（flow/table/tree/toggle）已实现基本解析
+- tree 规则应支持缩进层级 AND/OR 语义
+- table 规则应支持优先级排序和重叠条件检测
+- flow 规则应支持 Mermaid 子图
+
+**3. Codegen AST 翻译**
+- 当前状态：源码直译模式（提取源文本直接 emit）
+- 目标：基于 AST 的类型化翻译（如 `fmt.println(...)` 在 JS 中翻译为 `console.log(...)`）
+
 ### 远期：Tangle 自举
 
 远期目标是用 Tangle 编写 Tangle 编译器。该目标不阻塞 1.0。

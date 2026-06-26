@@ -100,6 +100,7 @@ tangle/
 │   ├── tests/               # 31 测试文件, 132 测试
 │   ├── stdlib/               # 标准库 .md 模块
 │   └── examples/mvp/        # 订单服务 MVP
+├── examples/                # 示例程序 (5 个 .tangle.md 文件)
 ├── tests/                   # 共享测试固件 (9 个 .md 文件)
 ├── schemas/ir.json          # IR JSON Schema (差分测试契约)
 ├── docs/                    # 设计文档 + 计划
@@ -116,12 +117,15 @@ tangle/
 # 构建
 cargo build
 
-# 运行
+# 编译并运行
 cargo run -- run tests/basic/hello.tangle.md
 cargo run -- run tests/basic/hello.tangle.md --target py
 cargo run -- run tests/basic/hello.tangle.md --target go
-cargo run -- run tests/basic/hello.tangle.md --emit-ir
-cargo run -- run tests/basic/hello.tangle.md --incremental
+
+# 仅编译（输出源码）
+cargo run -- build tests/basic/hello.tangle.md
+cargo run -- build tests/basic/hello.tangle.md --emit-ir
+cargo run -- build tests/basic/hello.tangle.md --incremental
 
 # 测试
 cargo test -p tangle-cli        # 81 个测试
@@ -145,17 +149,51 @@ npm test                         # 132 个测试
 
 ---
 
+## 导入标准库
+
+通过 Markdown 链接导入 stdlib 模块。三种导入粒度：
+
+```markdown
+## 依赖
+
+[fmt](fmt)                     ← 模块导入：fmt.println("hello")
+[println](fmt)                 ← 单函数：println("hello")
+[print, println](fmt)          ← 多函数：print("hi") + println("hi")
+```
+
+| 写法 | 用法 |
+|------|------|
+| `[fmt](fmt)` | `fmt.println("hello")` |
+| `[println](fmt)` | `println("hello")` |
+| `[print, println](fmt)` | `println("hi"); print("hi")` |
+
+裸名称 = stdlib 模块，带路径（`./`） = 本地文件。
+
+---
+
 ## CLI 命令参考
 
-### `tangle run` — 编译并运行程序
+### `tangle run` — 编译并执行
 
 ```bash
-tangle run <file.md>                           # 编译为 JavaScript（默认）
-tangle run <file.md> --target js               # 显式 JS 目标
-tangle run <file.md> --target py               # 编译为 Python
-tangle run <file.md> --target go               # 编译为 Go
-tangle run <file.md> --emit-ir                 # 输出 IR JSON（不生成代码）
-tangle run <file.md> --incremental             # 增量编译（跳过未修改文件）
+tangle run <file.md>                           # 编译为 JS 并执行
+tangle run <file.md> --target py               # 编译为 Python 并执行
+tangle run <file.md> --target go               # 编译为 Go 并执行
+tangle run <file.md> --incremental             # 增量编译
+```
+
+| 标志 | 说明 |
+|------|------|
+| `--target <js\|py\|go>` | 目标语言（默认 `js`） |
+| `--incremental` | 启用增量编译，缓存到 `.cache/` |
+
+### `tangle build` — 仅编译（输出源码）
+
+```bash
+tangle build <file.md>                         # 编译为 JS，输出源码
+tangle build <file.md> --target py             # 编译为 Python 源码
+tangle build <file.md> --emit-ir               # 输出 IR JSON
+tangle build <file.md> --incremental           # 增量编译
 ```
 
 | 标志 | 说明 |

@@ -11,14 +11,12 @@ fn collect_links_recursive(file: &str, nodes: &[MarkdownNode], out: &mut Vec<Tan
     for node in nodes {
         if node.node_type == "link" {
             if let Some(ref url) = node.url {
-                if url.ends_with(".md") {
-                    let alias = node.children.iter()
-                        .find(|c| c.node_type == "text")
-                        .and_then(|c| c.value.clone())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    if let Some(span) = node.to_span(file) {
-                        out.push(TangleImport { alias, target: url.clone(), span });
-                    }
+                let alias = node.children.iter()
+                    .find(|c| c.node_type == "text")
+                    .and_then(|c| c.value.clone())
+                    .unwrap_or_else(|| "unknown".to_string());
+                if let Some(span) = node.to_span(file) {
+                    out.push(TangleImport { alias, target: url.clone(), span });
                 }
             }
         }

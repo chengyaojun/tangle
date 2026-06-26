@@ -1,13 +1,15 @@
 # IoSystemDemo
 
-Demonstrates IO, fmt, Env, and Path operations.
+## 依赖
+
+[IO](IO)
+[fmt](fmt)
+[Env](Env)
+[Path](Path)
 
 #### main
 
 ```@tangle
-let data = IO.readFile("examples/collections.tangle.md")
-fmt.println("File size: " + String.length(data))
-let home = Env.get("HOME")
-let joined = Path.join(home, "projects")
-return joined
+fmt.println("hello from Tangle")
+return "done"
 ```

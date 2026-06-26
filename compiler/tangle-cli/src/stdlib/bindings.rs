@@ -11,6 +11,51 @@ pub fn stdlib_prelude(host: TargetHost) -> &'static str {
     }
 }
 
+/// Return per-module prelude code for a single stdlib module.
+/// Returns None if the module name is not recognized.
+pub fn stdlib_module_prelude(host: TargetHost, module: &str) -> Option<&'static str> {
+    let map = match host {
+        TargetHost::JavaScript => &JS_MODULE_PRELUDES,
+        TargetHost::Python => &PY_MODULE_PRELUDES,
+        TargetHost::Go => &GO_MODULE_PRELUDES,
+    };
+    map.get(module).copied()
+}
+
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static JS_MODULE_PRELUDES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
+    HashMap::from([
+        ("fmt", "const fmt = { print: (...args) => process.stdout.write(args.join(' ')), println: (...args) => console.log(...args), input: (prompt) => { process.stdout.write(prompt); return ''; }, debug: (...args) => console.debug(...args), error: (...args) => console.error(...args), format: (s, ...args) => require('util').format(s, ...args) };\n"),
+        ("List", "const List = (items) => ({ items, length: items.length, map: (fn) => List(items.map(fn)), filter: (fn) => List(items.filter(fn)) });\n"),
+        ("Map", "const Map = (entries) => ({ entries: new Map(entries), get: (k) => entries.get(k), set: (k,v) => Map(entries.set(k,v)), has: (k) => entries.has(k) });\n"),
+        ("Set", "const Set = (items) => ({ _set: new Set(items), add: (v) => _set.add(v) && this, remove: (v) => _set.delete(v), contains: (v) => _set.has(v), size: _set.size, to_list: () => List([..._set]) });\n"),
+        ("Option", "const Option = { Some: (v) => ({ is_some: true, value: v }), None: { is_some: false } };\n"),
+        ("JSON", "const JSON_lib = { parse: (s) => JSON.parse(s), stringify: (v) => JSON.stringify(v) };\n"),
+        ("Math", "const Math_lib = { abs: Math.abs, min: Math.min, max: Math.max, floor: Math.floor, ceil: Math.ceil, sqrt: Math.sqrt, pow: Math.pow };\n"),
+        ("DateTime", "const DateTime = { now: () => new Date(), format: (d,f) => d.toISOString(), timestamp: (d) => d.getTime() };\n"),
+        ("Random", "const Random = { int: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER), int_range: (lo, hi) => Math.floor(Math.random() * (hi - lo)) + lo, float: () => Math.random(), bool: () => Math.random() < 0.5, bytes: (n) => { const buf = new Uint8Array(n); crypto.getRandomValues(buf); return Array.from(buf); }, shuffle: (arr) => { const a = [...arr]; for (let i = a.length-1; i>0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }, choice: (arr) => arr[Math.floor(Math.random()*arr.length)] };\n"),
+        ("Encoding", "const Encoding = { hex_encode: (bytes) => Buffer.from(bytes).toString('hex'), hex_decode: (s) => Uint8Array.from(Buffer.from(s,'hex')), base64_encode: (bytes) => Buffer.from(bytes).toString('base64'), base64_decode: (s) => Buffer.from(s,'base64'), url_encode: (s) => encodeURIComponent(s), url_decode: (s) => decodeURIComponent(s) };\n"),
+        ("Sort", "const Sort = { asc: (arr) => [...arr].sort((a,b) => a>b?1:a<b?-1:0), desc: (arr) => [...arr].sort((a,b) => a<b?1:a>b?-1:0), by_key_asc: (arr, fn) => [...arr].sort((a,b) => fn(a)>fn(b)?1:fn(a)<fn(b)?-1:0), by_key_desc: (arr, fn) => [...arr].sort((a,b) => fn(a)<fn(b)?1:fn(a)>fn(b)?-1:0), is_sorted: (arr) => arr.every((v,i,a) => !i || a[i-1] <= v), min: (arr) => Math.min(...arr), max: (arr) => Math.max(...arr) };\n"),
+        ("Env", "const Env = { get: (k) => (typeof process !== 'undefined' && process.env && process.env[k]) || null, set: (k,v) => { if (typeof process !== 'undefined') process.env[k] = v; }, remove: (k) => { if (typeof process !== 'undefined') delete process.env[k]; }, args: () => (typeof process !== 'undefined' && process.argv) ? process.argv.slice(2) : [], current_dir: () => (typeof process !== 'undefined') ? process.cwd() : '/', exit: (code) => { if (typeof process !== 'undefined') process.exit(code); } };\n"),
+    ])
+});
+
+static PY_MODULE_PRELUDES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
+    HashMap::from([
+        ("fmt", "# fmt helpers\nclass fmt:\n    @staticmethod\n    def print(*args, end=''): print(*args, end=end)\n    @staticmethod\n    def println(*args): print(*args)\n    @staticmethod\n    def input(prompt=''): return input(prompt)\n    @staticmethod\n    def debug(*args): print('[DEBUG]', *args)\n    @staticmethod\n    def error(*args): print('[ERROR]', *args, file=__import__('sys').stderr)\n"),
+        ("IO", "# IO helpers\nclass IO:\n    @staticmethod\n    def readFile(p): return open(p, 'r').read()\n    @staticmethod\n    def writeFile(p, d):\n        with open(p, 'w') as f: f.write(d)\n    @staticmethod\n    def exists(p): return __import__('os').path.exists(p)\n"),
+    ])
+});
+
+static GO_MODULE_PRELUDES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
+    HashMap::from([
+        ("fmt", "// fmt helpers\nfunc FmtPrint(args ...interface{}) { fmt.Print(args...) }\nfunc FmtPrintln(args ...interface{}) { fmt.Println(args...) }\nfunc FmtInput(prompt string) string { fmt.Print(prompt); var s string; fmt.Scan(&s); return s }\nfunc FmtDebug(args ...interface{}) { fmt.Print(\"[DEBUG] \"); fmt.Println(args...) }\nfunc FmtError(args ...interface{}) { fmt.Fprintln(os.Stderr, args...) }\n"),
+        ("IO", "// IO helpers\nfunc IOReadFile(p string) (string, error) { data, err := os.ReadFile(p); return string(data), err }\nfunc IOWriteFile(p string, data string) error { return os.WriteFile(p, []byte(data), 0644) }\nfunc IOExists(p string) bool { _, err := os.Stat(p); return err == nil }\n"),
+    ])
+});
+
 const JS_STDLIB_PRELUDE: &str = r#"
 // --- Tangle Standard Library (JS) ---
 const List = (items) => ({ items, length: items.length, map: (fn) => List(items.map(fn)), filter: (fn) => List(items.filter(fn)) });

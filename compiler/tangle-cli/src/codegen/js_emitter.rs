@@ -9,11 +9,29 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str(crate::codegen::js_prelude::RUNTIME_PRELUDE);
     out.push('\n');
 
-    // Stdlib prelude
-    out.push_str(crate::stdlib::bindings::stdlib_prelude(
-        crate::stdlib::bindings::TargetHost::JavaScript
-    ));
-    out.push('\n');
+    // Stdlib prelude — only emit modules that are actually imported
+    if !graph.imported_stdlib.is_empty() {
+        out.push_str("// --- Tangle Standard Library (JS) ---\n");
+        for module in &graph.imported_stdlib {
+            if let Some(prelude) = crate::stdlib::bindings::stdlib_module_prelude(
+                crate::stdlib::bindings::TargetHost::JavaScript, module
+            ) {
+                out.push_str(prelude);
+            }
+        }
+        // Function-level imports: [println](fmt) -> const println = fmt.println;
+        for (alias, module) in &graph.stdlib_imports {
+            if alias != module {
+                // Check if alias is comma-separated: [print, println](fmt)
+                for fn_name in alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if fn_name != module {
+                        out.push_str(&format!("const {} = {}.{};\n", fn_name, module, fn_name));
+                    }
+                }
+            }
+        }
+        out.push('\n');
+    }
 
     // Module function
     out.push_str(&format!("function {}() {{\n", module_name));
@@ -35,16 +53,19 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
 
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
-                out.push_str(&format!(
-                    "  // {}: {}\n",
-                    match node.kind {
-                        IRNodeKind::Action => "action",
-                        IRNodeKind::Compute => "compute",
-                        IRNodeKind::Decision => "decision",
-                        _ => "unknown",
-                    },
-                    node.label
-                ));
+                if let Some(ref src) = node.source_text {
+                    out.push_str(&format!("  {};\n", src));
+                } else {
+                    out.push_str(&format!("  // {}: {}\n",
+                        match node.kind {
+                            IRNodeKind::Action => "action",
+                            IRNodeKind::Compute => "compute",
+                            IRNodeKind::Decision => "decision",
+                            _ => "unknown",
+                        },
+                        node.label
+                    ));
+                }
             }
             IRNodeKind::Terminal => {
                 out.push_str("  return Ok(undefined);\n");
@@ -69,7 +90,7 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
 
     // Entry point invocation
     out.push_str(&format!(
-        "// Entry point\nconst __result = {module_name}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nconsole.log(__result.value);\n",
+        "// Entry point\nconst __result = {module_name}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nif (__result.value !== undefined) {{ console.log(__result.value); }}\n",
         module_name = module_name
     ));
 
@@ -85,7 +106,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Action,
             label: "entry".to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -94,7 +115,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Terminal,
             label: "done".to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -103,7 +124,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Action,
             label: label.to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -127,13 +148,14 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "test_module");
 
         assert!(output.contains("function test_module()"));
         assert!(output.contains("Tangle Runtime Prelude"));
-        assert!(output.contains("Tangle Standard Library"));
+        assert!(!output.contains("Tangle Standard Library"), "no stdlib prelude when no modules imported");
         assert!(output.contains("return Ok(undefined)"));
     }
 
@@ -151,6 +173,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "workflow");
@@ -166,6 +189,7 @@ mod tests {
             edges: vec![],
             error_edges: vec![],
             entry_node_id: "missing".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "empty_mod");

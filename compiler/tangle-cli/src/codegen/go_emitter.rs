@@ -23,11 +23,18 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str("    return Result{Ok: false, Error: variant}\n");
     out.push_str("}\n\n");
 
-    // Stdlib prelude
-    out.push_str(crate::stdlib::bindings::stdlib_prelude(
-        crate::stdlib::bindings::TargetHost::Go
-    ));
-    out.push('\n');
+    // Stdlib prelude — only emit imported modules
+    if !graph.imported_stdlib.is_empty() {
+        out.push_str("// --- Tangle Standard Library (Go) ---\n");
+        for module in &graph.imported_stdlib {
+            if let Some(prelude) = crate::stdlib::bindings::stdlib_module_prelude(
+                crate::stdlib::bindings::TargetHost::Go, module
+            ) {
+                out.push_str(prelude);
+            }
+        }
+        out.push('\n');
+    }
 
     // Module function
     out.push_str(&format!("func {}() Result {{\n", to_camel(module_name)));
@@ -111,7 +118,7 @@ mod tests {
             id: id.to_string(),
             kind,
             label: label.to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -135,6 +142,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_go(&graph, "test_module");
@@ -163,6 +171,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_go(&graph, "my.module-name");
@@ -170,6 +179,6 @@ mod tests {
         assert!(output.contains("// action: do_work"), "expected action comment, got:\n{}", output);
         // CamelCase sanitization
         assert!(output.contains("func MyModuleName()"), "expected CamelCase name, got:\n{}", output);
-        assert!(output.contains("Tangle Standard Library"));
+        assert!(!output.contains("Tangle Standard Library"), "no stdlib prelude when no modules imported");
     }
 }

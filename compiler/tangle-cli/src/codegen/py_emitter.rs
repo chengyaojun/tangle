@@ -25,11 +25,18 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str("    return Result(False, value, variant)\n\n");
     out.push('\n');
 
-    // Stdlib prelude
-    out.push_str(crate::stdlib::bindings::stdlib_prelude(
-        crate::stdlib::bindings::TargetHost::Python
-    ));
-    out.push('\n');
+    // Stdlib prelude — only emit imported modules
+    if !graph.imported_stdlib.is_empty() {
+        out.push_str("# --- Tangle Standard Library (Python) ---\n");
+        for module in &graph.imported_stdlib {
+            if let Some(prelude) = crate::stdlib::bindings::stdlib_module_prelude(
+                crate::stdlib::bindings::TargetHost::Python, module
+            ) {
+                out.push_str(prelude);
+            }
+        }
+        out.push('\n');
+    }
 
     // Module function
     out.push_str(&format!("def {}() -> Result:\n", module_name));
@@ -101,7 +108,7 @@ mod tests {
             id: id.to_string(),
             kind,
             label: label.to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -125,6 +132,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_python(&graph, "test_module");
@@ -151,6 +159,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_python(&graph, "workflow");
@@ -167,6 +176,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
         let output2 = emit_python(&graph2, "my.module_name");
         assert!(output2.contains("def my_module_name()"), "special chars should be sanitized");

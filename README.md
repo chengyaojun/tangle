@@ -150,17 +150,51 @@ npm test                         # 132 tests
 
 ---
 
+## Importing the Standard Library
+
+Import stdlib modules via Markdown links. Three import granularities:
+
+```markdown
+## 依赖
+
+[fmt](fmt)                     ← module: fmt.println("hello")
+[println](fmt)                 ← single function: println("hello")
+[print, println](fmt)          ← multiple functions: print("hi") + println("hi")
+```
+
+| Syntax | Usage |
+|--------|-------|
+| `[fmt](fmt)` | `fmt.println("hello")` |
+| `[println](fmt)` | `println("hello")` |
+| `[print, println](fmt)` | `println("hi"); print("hi")` |
+
+Bare name = stdlib module. Path prefix (`./`) = local file.
+
+---
+
 ## CLI Reference
 
 ### `tangle run` — Compile and execute
 
 ```bash
-tangle run <file.md>                           # Compile to JavaScript (default)
-tangle run <file.md> --target js               # Explicit JS target
-tangle run <file.md> --target py               # Compile to Python
-tangle run <file.md> --target go               # Compile to Go
-tangle run <file.md> --emit-ir                 # Output IR JSON (no codegen)
+tangle run <file.md>                           # Compile to JS and run
+tangle run <file.md> --target py               # Compile to Python and run
+tangle run <file.md> --target go               # Compile to Go and run
 tangle run <file.md> --incremental             # Skip unchanged files
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target <js\|py\|go>` | Target language (default `js`) |
+| `--incremental` | Enable incremental compilation, cached in `.cache/` |
+
+### `tangle build` — Compile only (output source)
+
+```bash
+tangle build <file.md>                         # Compile to JS, print source
+tangle build <file.md> --target py             # Compile to Python source
+tangle build <file.md> --emit-ir               # Output IR JSON
+tangle build <file.md> --incremental           # Skip unchanged files
 ```
 
 | Flag | Description |
