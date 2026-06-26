@@ -2,23 +2,18 @@ use serde::{Deserialize, Serialize};
 use crate::model::SourceSpan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum IRNodeKind {
     Action,
     Compute,
     Decision,
     Terminal,
+    #[serde(rename = "error-terminal")]
     ErrorTerminal,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct IRNode {
-    pub id: String,
-    pub kind: IRNodeKind,
-    pub label: String,
-    pub source_span: Option<SourceSpan>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum IREdgeKind {
     Control,
     Condition,
@@ -26,6 +21,16 @@ pub enum IREdgeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IRNode {
+    pub id: String,
+    pub kind: IRNodeKind,
+    pub label: String,
+    pub source_span: Option<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IREdge {
     pub from: String,
     pub to: String,
@@ -35,6 +40,7 @@ pub struct IREdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IRErrorEdge {
     pub from: String,
     pub error_variant: String,
@@ -42,6 +48,7 @@ pub struct IRErrorEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuleGraph {
     pub nodes: Vec<IRNode>,
     pub edges: Vec<IREdge>,
