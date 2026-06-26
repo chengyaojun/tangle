@@ -8,7 +8,7 @@ Tangle is a **Markdown-native programming language** where every `.md` file is b
 
 ## Language Design
 
-### Heading Hierarchy (6-Level Scope System)
+### Six-Level Heading Hierarchy
 
 | Level | Role | Semantic | Casing |
 |-------|------|----------|--------|
@@ -16,16 +16,16 @@ Tangle is a **Markdown-native programming language** where every `.md` file is b
 | `##` | `section` | Namespace / domain zone | PascalCase |
 | `###` | `type` | Structs, interfaces, error families | PascalCase |
 | `####` | `callable` | Functions, methods | camelCase |
-| `#####` | `semantic-section` | Preconditions, steps, branches | camelCase |
+| `#####` | `semantic-section` | Preconditions, steps, branches, rules | camelCase |
 | `######` | `semantic-atom` | Atomic actions, assertions, tests | camelCase |
 
 ### Implicit Method Binding
 
 When a `####` heading is physically nested under a `###` struct heading, the compiler automatically binds it as a method — no arrow syntax needed.
 
-### Immutable Structs & Update Syntax
+### Immutable Structs
 
-Structs are immutable by default. Use brace-expressions for both construction and copy-on-update:
+Structs are immutable by default. Brace-expressions for both construction and copy-on-update:
 
 ```@tangle
 user = User { id: 1, email: "alice@tangle.io" }
@@ -44,174 +44,7 @@ match result {
 }
 ```
 
-### Visibility
-
-- **Default public** — depth 3-4 symbols without `_` prefix are exported
-- **`_` prefix private** — symbols starting with `_` are module-private
-- **No `@export` needed**
-
-### Entry Point
-
-A depth-4 callable with the identifier `main` is implicitly the program entry point:
-
-```markdown
-#### main
-```
-
-### Rule Graph IR
-
-Tangle compiles code and rules into a unified **Rule Graph** intermediate representation (nodes, edges, error edges), enabling mixed execution of `@tangle` code blocks and decision logic expressed as tables, lists, Mermaid diagrams, or checkboxes — all marked with the `Rule:` heading prefix.
-
----
-
-## Compilation Pipeline
-
-```
-Markdown Source (.md)
-  → compileModule       (parse + heading tree + symbols)
-  → checkModule         (parse @tangle code + type check)
-  → compileToIR         (lower to Rule Graph IR)
-  → emitJS              (generate JavaScript)
-  → Node.js execution   (tangle run)
-```
-
----
-
-## Quick Start
-
-### Install
-
-```bash
-npm install
-npm run build
-```
-
-### Run a Tangle program
-
-```bash
-node dist/src/cli/main.js run ./examples/mvp/order-service.tangle.md
-```
-
-### Run tests
-
-```bash
-npm test       # 132 tests, 31 test files
-```
-
-### Type check
-
-```bash
-npm run typecheck
-```
-
----
-
-## Example: Immutable Struct with Methods
-
-````markdown
-### User
-* `id`: user ID (Int)
-* `email`: email (String)
-* `is_active`: active flag (Bool)
-
-#### 激活 (activate)
-* `reason`: activation reason (String)
-
-```@tangle
-return this { is_active: true }
-```
-````
-
----
-
-## Example: Error Handling
-
-````markdown
-#### 确认支付 (confirm)
-* `order`: Order
-
-##### Error: PayFailed
-##### Error: Timeout
-
-```@tangle
-result = gateway.charge(order.amount)?
-return Ok(result)
-```
-````
-
----
-
-## Project Structure
-
-```
-tangle/
-├── src/
-│   ├── model.ts              # DSL type definitions
-│   ├── ast.ts                # Code AST types
-│   ├── front-end/            # Markdown → TangleModule (A1)
-│   ├── markdown/             # Markdown parser wrapper
-│   ├── parser/               # Lexer + recursive descent parser (A2)
-│   ├── checker/              # Type checker + error handling (A2+A3)
-│   ├── ir/                   # Rule Graph IR (A4)
-│   ├── codegen/              # JS code generation (A5)
-│   ├── cli/                  # CLI entry point
-│   └── pipeline.ts           # Full compilation pipeline
-├── tests/                    # 31 test files, 132 tests
-├── stdlib/                   # Standard library (.tangle.md modules)
-├── examples/mvp/             # Business MVP example
-└── docs/
-    ├── superpowers/specs/    # Language design specification
-    └── superpowers/plans/    # Implementation plans (A1-A6)
-```
-
----
-
-## Roadmap
-
-### ✅ Track A — TypeScript Bootstrap (0.x) — Complete
-
-All six phases implemented. JS/TS codegen only. Semantic validation + business MVP.
-
-| Phase | Status | Deliverable |
-|-------|--------|-------------|
-| A1 — Compiler Frontend | ✅ | Markdown → `TangleModule` DSL |
-| A2 — Parser & Type Checker | ✅ | `@tangle` code parser, static type system |
-| A3 — Error Semantics | ✅ | `?` propagation, `match` exhaustiveness, `panic` |
-| A4 — Rule Graph IR | ✅ | Unified IR, `Rule:` lowering (flow/table/tree/toggle) |
-| A5 — JS Codegen & CLI | ✅ | IR → JS, `tangle run`, `tangle test` |
-| A6 — Stdlib & MVP | ✅ | 7 stdlib modules, order service example |
-
-### ⬜ Track B — Rust Authority (1.0)
-
-Official `tangle-cli` in Rust once semantic baseline is frozen:
-
-- Rust compiler skeleton matching TS semantics
-- Differential testing against TS reference
-- Python / Go codegen
-- Cross-host stdlib consistency suite
-- Incremental compilation, IR caching, LSP, doc generation
-
-### 🔮 2.0 — Self-Hosting
-
-Long-term: write the Tangle compiler in Tangle itself. Rust edition becomes the bootstrap tool.
-
----
-
-## Standard Library
-
-| Module | Types / Functions |
-|--------|------------------|
-| `List` | `length`, `map`, `filter` |
-| `Option` | `Some`, `None`, `unwrap` |
-| `Map` | `get` |
-| `String` | `length`, `concat` |
-| `JSON` | `parse`, `stringify` |
-| `IO` | `readFile`, `writeFile` |
-| `Math` | `abs`, `min` |
-
----
-
-## Language Semantics
+### Visibility & Conventions
 
 | Feature | Convention | Example |
 |---------|-----------|---------|
@@ -222,6 +55,144 @@ Long-term: write the Tangle compiler in Tangle itself. Rust edition becomes the 
 | Rules | `Rule:` prefix heading | `##### Rule: Approval` |
 | Tests | `Test:` prefix heading | `##### Test: NormalFlow` |
 | Imports | Markdown links | `[Alias](./module.md)` |
+
+---
+
+## Compilation Pipeline
+
+```
+Markdown Source (.md)
+  → compileModule       (frontend: parse + heading tree + symbols + rule detection)
+  → checkModule         (checker: parse @tangle code + type check)
+  → compileToIR         (IR: lower to Rule Graph IR + rule lowering)
+  → emitJS / emitPython / emitGo   (multi-host codegen)
+  → host execution      (Node.js / Python / Go)
+```
+
+---
+
+## Project Structure
+
+```
+tangle/
+├── compiler/tangle-cli/     # Track B: Rust authority compiler (57 source files)
+│   ├── src/
+│   │   ├── model.rs, ast.rs, diagnostic.rs
+│   │   ├── frontend/        # Markdown → TangleModule
+│   │   ├── markdown/        # pulldown-cmark wrapper
+│   │   ├── parser/          # Lexer + Pratt parser
+│   │   ├── checker/         # Type checker + error handling (10 files)
+│   │   ├── ir/              # Rule Graph IR + rule lowering (9 files)
+│   │   ├── codegen/         # JS / Python / Go emitters
+│   │   ├── stdlib/          # Multi-host stdlib bindings
+│   │   ├── incremental/     # Incremental compilation
+│   │   ├── lsp/             # LSP language server
+│   │   ├── docgen/          # HTML doc generation
+│   │   └── cli/             # tangle run / test / lsp / doc
+│   └── Cargo.toml
+├── library/std/             # Standard library (22 modules)
+│   └── src/
+│       ├── list, map, set, option
+│       ├── string, regex, encoding
+│       ├── fmt, io, env, path, process
+│       ├── http, json
+│       ├── math, random, sort
+│       ├── task, channel, sync
+│       ├── datetime
+│       └── crypto
+├── reference/               # Track A: TypeScript reference (frozen)
+│   ├── src/                 # 36 source files
+│   ├── tests/               # 31 test files, 132 tests
+│   ├── stdlib/               # Stdlib .md modules
+│   └── examples/mvp/        # Order service MVP
+├── tests/                   # Shared test fixtures (9 .md files)
+├── schemas/ir.json          # IR JSON Schema (diff-test contract)
+├── docs/                    # Design docs + plans
+└── Cargo.toml               # Rust workspace root
+```
+
+---
+
+## Quick Start
+
+### Rust Compiler (Track B)
+
+```bash
+# Build
+cargo build
+
+# Run
+cargo run -- run tests/basic/hello.tangle.md
+cargo run -- run tests/basic/hello.tangle.md --target py
+cargo run -- run tests/basic/hello.tangle.md --target go
+cargo run -- run tests/basic/hello.tangle.md --emit-ir
+cargo run -- run tests/basic/hello.tangle.md --incremental
+
+# Test
+cargo test -p tangle-cli        # 81 tests
+
+# LSP & Docs
+cargo run -- lsp
+cargo run -- doc tests/basic/hello.tangle.md
+```
+
+### TypeScript Reference (Track A)
+
+```bash
+cd reference
+npm install
+npm run build
+
+node dist/src/cli/main.js run ../tests/basic/hello.tangle.md
+node dist/src/cli/main.js run ../tests/basic/hello.tangle.md --emit-ir
+npm test                         # 132 tests
+```
+
+---
+
+## Roadmap
+
+### ✅ Track A — TypeScript Bootstrap (0.x) — Complete
+
+JS/TS codegen only. Semantic validation + business MVP.
+
+| Phase | Status | Deliverable |
+|-------|--------|-------------|
+| A1 — Compiler Frontend | ✅ | Markdown → `TangleModule` DSL |
+| A2 — Parser & Type Checker | ✅ | `@tangle` code parser, static type system |
+| A3 — Error Semantics | ✅ | `?` propagation, `match` exhaustiveness, `panic` |
+| A4 — Rule Graph IR | ✅ | Unified IR, `Rule:` lowering |
+| A5 — JS Codegen & CLI | ✅ | IR → JS, `tangle run`, `tangle test` |
+| A6 — Stdlib & MVP | ✅ | 7 stdlib modules, order service example |
+
+### ✅ Track B — Rust Authority (1.0) — Phase B1 Complete
+
+| Phase | Status | Content |
+|-------|--------|---------|
+| B1 — Rust Compiler Skeleton | ✅ | Frontend → Parser → Checker → IR → JS Codegen + CLI |
+| B2 — Differential Testing | ✅ | IR JSON Schema, shared fixtures, TS `--emit-ir` |
+| B3 — Multi-host Codegen | ✅ | Python + Go emitters, `--target` flag |
+| B4 — Standard Library | ✅ | 22 modules (collections/text/IO/system/net/math/concurrency/time/crypto) |
+| B5 — Performance & Toolchain | ✅ | Incremental compilation + IR cache + LSP + Doc HTML |
+
+### 🔮 2.0 — Self-Hosting
+
+Long-term: write the Tangle compiler in Tangle itself. Rust edition becomes the bootstrap tool.
+
+---
+
+## Standard Library (22 modules)
+
+| Category | Modules |
+|----------|---------|
+| Collections | List, Map, Set, Option |
+| Text | String, Regex, Encoding |
+| I/O & System | IO, fmt, Env, Path, Process |
+| Network | HTTP, JSON |
+| Math & Data | Math, Random, Sort |
+| Concurrency | Task, Channel, Sync |
+| Time | DateTime |
+| Crypto | Crypto |
 
 ---
 

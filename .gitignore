@@ -1,13 +1,18 @@
 # Dependencies
 node_modules/
+reference/node_modules/
 
 # Build output
 dist/
 reference/dist/
 
+# Incremental compilation cache
+.cache/
+
 # Rust
 target/
 **/target/
+**/Cargo.lock
 
 # IDE
 .vscode/
