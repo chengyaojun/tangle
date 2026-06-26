@@ -336,9 +336,14 @@ dependencies = [
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "tangle-std",
  "tempfile",
  "thiserror",
 ]
+
+[[package]]
+name = "tangle-std"
+version = "0.1.0"
 
 [[package]]
 name = "tempfile"
