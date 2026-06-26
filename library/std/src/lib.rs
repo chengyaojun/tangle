@@ -82,3 +82,83 @@ pub const ALL_STDLIB_MODULES: &[&str] = &[
     // Crypto
     "Crypto",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_all_modules_count() {
+        assert_eq!(ALL_STDLIB_MODULES.len(), 22, "Expected 22 stdlib modules");
+    }
+
+    #[test]
+    fn test_module_names_unique() {
+        let mut sorted = ALL_STDLIB_MODULES.to_vec();
+        sorted.sort();
+        let mut seen = std::collections::HashSet::new();
+        for name in &sorted {
+            assert!(seen.insert(name), "Duplicate module name: {}", name);
+        }
+    }
+
+    #[test]
+    fn test_each_module_has_name_and_ops() {
+        // Spot-check a few modules representative of each category
+        assert!(!ListSpec::NAME.is_empty());
+        assert!(!ListSpec::OPERATIONS.is_empty());
+
+        assert!(!MapSpec::NAME.is_empty());
+        assert_eq!(MapSpec::NAME, "Map");
+
+        assert!(!SetSpec::NAME.is_empty());
+        assert_eq!(SetSpec::NAME, "Set");
+
+        assert!(!OptionSpec::NAME.is_empty());
+
+        assert!(!StringSpec::NAME.is_empty());
+        assert!(!RegexSpec::NAME.is_empty());
+        assert!(!EncodingSpec::NAME.is_empty());
+
+        assert!(!IoSpec::NAME.is_empty());
+        assert!(!FmtSpec::NAME.is_empty());
+        assert!(!EnvSpec::NAME.is_empty());
+        assert!(!PathSpec::NAME.is_empty());
+        assert!(!ProcessSpec::NAME.is_empty());
+
+        assert!(!HttpSpec::NAME.is_empty());
+        assert!(!JsonSpec::NAME.is_empty());
+
+        assert!(!MathSpec::NAME.is_empty());
+        assert!(!RandomSpec::NAME.is_empty());
+        assert!(!SortSpec::NAME.is_empty());
+
+        assert!(!TaskSpec::NAME.is_empty());
+        assert!(!ChannelSpec::NAME.is_empty());
+        assert!(!SyncSpec::NAME.is_empty());
+
+        assert!(!DateTimeSpec::NAME.is_empty());
+        assert!(!CryptoSpec::NAME.is_empty());
+    }
+
+    #[test]
+    fn test_all_modules_in_list_have_files() {
+        // Each module in ALL_STDLIB_MODULES must have a corresponding spec file
+        for name in ALL_STDLIB_MODULES {
+            let lowercase = name.to_lowercase();
+            assert!(
+                module_exists(&lowercase),
+                "Module '{}' listed in ALL_STDLIB_MODULES but no file found",
+                name
+            );
+        }
+    }
+
+    fn module_exists(name: &str) -> bool {
+        // Check that the Rust module source file exists
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join(format!("{}.rs", name));
+        path.exists()
+    }
+}

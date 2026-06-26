@@ -1,3 +1,13 @@
+//! Random — random number generation.
+//!
+//! ## Host Mappings
+//! | Go | Rust | Python |
+//! |----|------|--------|
+//! | math/rand | rand crate | random |
+//!
+//! ## Operations
+//! int, int_range, float, bool, bytes, shuffle, choice
+
 /// Random number generation — for nonces, test data, sampling
 pub struct RandomSpec;
 

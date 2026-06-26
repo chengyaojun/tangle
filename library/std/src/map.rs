@@ -1,3 +1,13 @@
+//! Map — key-value store.
+//!
+//! ## Host Mappings
+//! | Go | Rust | Python |
+//! |----|------|--------|
+//! | map | HashMap | dict |
+//!
+//! ## Operations
+//! get, set, has, keys, values, delete
+
 /// Generic Map<K,V> — key-value store
 pub struct MapSpec;
 
