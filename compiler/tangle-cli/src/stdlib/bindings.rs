@@ -25,9 +25,9 @@ const Random = { int: () => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
 const Encoding = { hex_encode: (bytes) => Buffer.from(bytes).toString('hex'), hex_decode: (s) => Uint8Array.from(Buffer.from(s,'hex')), base64_encode: (bytes) => Buffer.from(bytes).toString('base64'), base64_decode: (s) => Buffer.from(s,'base64'), url_encode: (s) => encodeURIComponent(s), url_decode: (s) => decodeURIComponent(s) };
 const Sort = { asc: (arr) => [...arr].sort((a,b) => a>b?1:a<b?-1:0), desc: (arr) => [...arr].sort((a,b) => a<b?1:a>b?-1:0), by_key_asc: (arr, fn) => [...arr].sort((a,b) => fn(a)>fn(b)?1:fn(a)<fn(b)?-1:0), by_key_desc: (arr, fn) => [...arr].sort((a,b) => fn(a)<fn(b)?1:fn(a)>fn(b)?-1:0), is_sorted: (arr) => arr.every((v,i,a) => !i || a[i-1] <= v), min: (arr) => Math.min(...arr), max: (arr) => Math.max(...arr) };
 const Env = { get: (k) => (typeof process !== 'undefined' && process.env && process.env[k]) || null, set: (k,v) => { if (typeof process !== 'undefined') process.env[k] = v; }, remove: (k) => { if (typeof process !== 'undefined') delete process.env[k]; }, args: () => (typeof process !== 'undefined' && process.argv) ? process.argv.slice(2) : [], current_dir: () => (typeof process !== 'undefined') ? process.cwd() : '/', exit: (code) => { if (typeof process !== 'undefined') process.exit(code); } };
-// --- System & Files ---
+// --- I/O & System ---
+const IO = { readFile: (p) => require('fs').readFileSync(p, 'utf-8'), writeFile: (p, d) => require('fs').writeFileSync(p, d), exists: (p) => require('fs').existsSync(p), stat: (p) => require('fs').statSync(p), mkdir: (p) => require('fs').mkdirSync(p, {recursive: true}), read_dir: (p) => require('fs').readdirSync(p), remove: (p) => require('fs').rmSync(p, {recursive: true}), rename: (a,b) => require('fs').renameSync(a,b), copy: (a,b) => require('fs').copyFileSync(a,b), chmod: (p,m) => require('fs').chmodSync(p,m), size: (p) => require('fs').statSync(p).size, is_dir: (p) => require('fs').statSync(p).isDirectory(), is_file: (p) => require('fs').statSync(p).isFile() };
 const Path = { join: (...parts) => require('path').join(...parts), basename: (p) => require('path').basename(p), dirname: (p) => require('path').dirname(p), extension: (p) => require('path').extname(p), is_absolute: (p) => require('path').isAbsolute(p), normalize: (p) => require('path').normalize(p), relative: (from, to) => require('path').relative(from, to), split: (p) => p.split(/[\\/]/).filter(Boolean) };
-const File = { stat: (p) => require('fs').statSync(p), mkdir: (p) => require('fs').mkdirSync(p, {recursive: true}), read_dir: (p) => require('fs').readdirSync(p), remove: (p) => require('fs').unlinkSync(p), rename: (a,b) => require('fs').renameSync(a,b), copy: (a,b) => require('fs').copyFileSync(a,b), chmod: (p,m) => require('fs').chmodSync(p,m), size: (p) => require('fs').statSync(p).size, is_dir: (p) => require('fs').statSync(p).isDirectory(), is_file: (p) => require('fs').statSync(p).isFile() };
 const Process = { run: (cmd, args) => require('child_process').execFileSync(cmd, args), exec: (cmd) => require('child_process').execSync(cmd), spawn: (cmd, args) => require('child_process').spawn(cmd, args, {stdio: 'inherit'}), exit: (c) => process.exit(c), pid: process.pid, args: process.argv.slice(2), stdout: process.stdout, stderr: process.stderr, status: 0 };
 // --- Concurrency ---
 const Task = { spawn: (fn) => { const p = new Promise(r => r(fn())); return p; }, await: (p) => p.then(v => v), sleep: (ms) => new Promise(r => setTimeout(r, ms)), join: (...tasks) => Promise.all(tasks), parallel: (fns) => Promise.all(fns.map(f => f())), race: (fns) => Promise.race(fns.map(f => f())), all: (fns) => Promise.all(fns.map(f => f())), timeout: (p, ms) => Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error('timeout')), ms))]) };
@@ -168,7 +168,14 @@ class Path:
     @staticmethod
     def split(p): return p.replace('\\', '/').strip('/').split('/')
 
-class File:
+class IO:
+    @staticmethod
+    def readFile(p): return open(p, 'r').read()
+    @staticmethod
+    def writeFile(p, d):
+        with open(p, 'w') as f: f.write(d)
+    @staticmethod
+    def exists(p): return os.path.exists(p)
     @staticmethod
     def stat(p): return os.stat(p)
     @staticmethod
@@ -176,7 +183,7 @@ class File:
     @staticmethod
     def read_dir(p): return os.listdir(p)
     @staticmethod
-    def remove(p): return os.remove(p)
+    def remove(p): return os.remove(p) if os.path.isfile(p) else shutil.rmtree(p)
     @staticmethod
     def rename(a, b): return os.rename(a, b)
     @staticmethod
@@ -376,17 +383,20 @@ func PathNormalize(p string) string { return filepath.Clean(p) }
 func PathRelative(from, to string) (string, error) { return filepath.Rel(from, to) }
 func PathSplit(p string) []string { return strings.Split(filepath.Clean(p), string(filepath.Separator)) }
 
-// File helpers (Go: os file ops)
-func FileStat(p string) (os.FileInfo, error) { return os.Stat(p) }
-func FileMkdir(p string) error { return os.MkdirAll(p, 0755) }
-func FileReadDir(p string) ([]os.DirEntry, error) { return os.ReadDir(p) }
-func FileRemove(p string) error { return os.Remove(p) }
-func FileRename(old, new string) error { return os.Rename(old, new) }
-func FileCopy(src, dst string) error { data, err := os.ReadFile(src); if err != nil { return err }; return os.WriteFile(dst, data, 0644) }
-func FileChmod(p string, mode os.FileMode) error { return os.Chmod(p, mode) }
-func FileSize(p string) (int64, error) { info, err := os.Stat(p); if err != nil { return 0, err }; return info.Size(), nil }
-func FileIsDir(p string) bool { info, err := os.Stat(p); return err == nil && info.IsDir() }
-func FileIsFile(p string) bool { info, err := os.Stat(p); return err == nil && !info.IsDir() }
+// IO helpers (Go: os file I/O & filesystem ops)
+func IOReadFile(p string) (string, error) { data, err := os.ReadFile(p); return string(data), err }
+func IOWriteFile(p string, data string) error { return os.WriteFile(p, []byte(data), 0644) }
+func IOExists(p string) bool { _, err := os.Stat(p); return err == nil }
+func IOStat(p string) (os.FileInfo, error) { return os.Stat(p) }
+func IOMkdir(p string) error { return os.MkdirAll(p, 0755) }
+func IOReadDir(p string) ([]os.DirEntry, error) { return os.ReadDir(p) }
+func IORemove(p string) error { return os.RemoveAll(p) }
+func IORename(old, new string) error { return os.Rename(old, new) }
+func IOCopy(src, dst string) error { data, err := os.ReadFile(src); if err != nil { return err }; return os.WriteFile(dst, data, 0644) }
+func IOChmod(p string, mode os.FileMode) error { return os.Chmod(p, mode) }
+func IOSize(p string) (int64, error) { info, err := os.Stat(p); if err != nil { return 0, err }; return info.Size(), nil }
+func IOIsDir(p string) bool { info, err := os.Stat(p); return err == nil && info.IsDir() }
+func IOIsFile(p string) bool { info, err := os.Stat(p); return err == nil && !info.IsDir() }
 
 // Process helpers (Go: os/exec)
 func ProcessRun(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).Output() }

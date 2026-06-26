@@ -4,14 +4,13 @@
 //! The compiler's codegen layer maps these to host-specific implementations
 //! for JavaScript, Python, and Go.
 //!
-//! ## Module inventory (23 modules)
+//! ## Module inventory (22 modules)
 //!
 //! | Category | Modules |
 //! |----------|---------|
 //! | Collections | List, Map, Set, Option |
 //! | Text | String, Regex, Encoding |
-//! | I/O & Formatting | fmt, IO, Env |
-//! | System & Files | Path, File, Process |
+//! | I/O & System | IO, fmt, Env, Path, Process |
 //! | Network | HTTP, JSON |
 //! | Math & Data | Math, Random, Sort |
 //! | Concurrency | Task, Channel, Sync |
@@ -29,7 +28,6 @@ pub mod fmt;
 pub mod io;
 pub mod env;
 pub mod path;
-pub mod file;
 pub mod process;
 pub mod http;
 pub mod json;
@@ -53,7 +51,6 @@ pub use fmt::*;
 pub use io::*;
 pub use env::*;
 pub use path::*;
-pub use file::*;
 pub use process::*;
 pub use http::*;
 pub use json::*;
@@ -72,10 +69,8 @@ pub const ALL_STDLIB_MODULES: &[&str] = &[
     "List", "Map", "Set", "Option",
     // Text
     "String", "Regex", "Encoding",
-    // I/O & Formatting
-    "fmt", "IO", "Env",
-    // System & Files
-    "Path", "File", "Process",
+    // I/O & System
+    "IO", "fmt", "Env", "Path", "Process",
     // Network
     "HTTP", "JSON",
     // Math & Data
