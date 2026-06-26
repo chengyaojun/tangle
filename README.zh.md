@@ -145,6 +145,47 @@ npm test                         # 132 个测试
 
 ---
 
+## CLI 命令参考
+
+### `tangle run` — 编译并运行程序
+
+```bash
+tangle run <file.md>                           # 编译为 JavaScript（默认）
+tangle run <file.md> --target js               # 显式 JS 目标
+tangle run <file.md> --target py               # 编译为 Python
+tangle run <file.md> --target go               # 编译为 Go
+tangle run <file.md> --emit-ir                 # 输出 IR JSON（不生成代码）
+tangle run <file.md> --incremental             # 增量编译（跳过未修改文件）
+```
+
+| 标志 | 说明 |
+|------|------|
+| `--target <js\|py\|go>` | 目标语言（默认 `js`） |
+| `--emit-ir` | 输出 Rule Graph IR JSON，跳过代码生成 |
+| `--incremental` | 启用增量编译，缓存到 `.cache/` |
+
+### `tangle test` — 运行测试
+
+```bash
+tangle test                                    # 运行所有测试
+tangle test --filter <pattern>                 # 按名称过滤
+```
+
+### `tangle doc` — 生成文档
+
+```bash
+tangle doc <file.md>                           # 输出 HTML 到 stdout
+tangle doc <file.md> --output docs/index.html  # 输出到文件
+```
+
+### `tangle lsp` — 启动语言服务器
+
+```bash
+tangle lsp                                     # stdio LSP 服务器
+```
+
+---
+
 ## 路线图
 
 ### ✅ Track A — TypeScript 引导期 (0.x) — 已完成

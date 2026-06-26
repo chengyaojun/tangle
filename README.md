@@ -150,6 +150,47 @@ npm test                         # 132 tests
 
 ---
 
+## CLI Reference
+
+### `tangle run` — Compile and execute
+
+```bash
+tangle run <file.md>                           # Compile to JavaScript (default)
+tangle run <file.md> --target js               # Explicit JS target
+tangle run <file.md> --target py               # Compile to Python
+tangle run <file.md> --target go               # Compile to Go
+tangle run <file.md> --emit-ir                 # Output IR JSON (no codegen)
+tangle run <file.md> --incremental             # Skip unchanged files
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target <js\|py\|go>` | Target language (default `js`) |
+| `--emit-ir` | Emit Rule Graph IR JSON, skip code generation |
+| `--incremental` | Enable incremental compilation, cached in `.cache/` |
+
+### `tangle test` — Run tests
+
+```bash
+tangle test                                    # Run all tests
+tangle test --filter <pattern>                 # Filter by name
+```
+
+### `tangle doc` — Generate documentation
+
+```bash
+tangle doc <file.md>                           # Output HTML to stdout
+tangle doc <file.md> --output docs/index.html  # Write to file
+```
+
+### `tangle lsp` — Start language server
+
+```bash
+tangle lsp                                     # stdio LSP server
+```
+
+---
+
 ## Roadmap
 
 ### ✅ Track A — TypeScript Bootstrap (0.x) — Complete
