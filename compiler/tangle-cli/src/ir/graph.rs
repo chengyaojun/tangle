@@ -27,6 +27,8 @@ pub struct IRNode {
     pub kind: IRNodeKind,
     pub label: String,
     pub source_span: Option<SourceSpan>,
+    #[serde(default)]
+    pub source_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

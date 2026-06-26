@@ -42,16 +42,19 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
 
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
-                out.push_str(&format!(
-                    "  // {}: {}\n",
-                    match node.kind {
-                        IRNodeKind::Action => "action",
-                        IRNodeKind::Compute => "compute",
-                        IRNodeKind::Decision => "decision",
-                        _ => "unknown",
-                    },
-                    node.label
-                ));
+                if let Some(ref src) = node.source_text {
+                    out.push_str(&format!("  {};\n", src));
+                } else {
+                    out.push_str(&format!("  // {}: {}\n",
+                        match node.kind {
+                            IRNodeKind::Action => "action",
+                            IRNodeKind::Compute => "compute",
+                            IRNodeKind::Decision => "decision",
+                            _ => "unknown",
+                        },
+                        node.label
+                    ));
+                }
             }
             IRNodeKind::Terminal => {
                 out.push_str("  return Ok(undefined);\n");
@@ -92,7 +95,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Action,
             label: "entry".to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -101,7 +104,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Terminal,
             label: "done".to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 
@@ -110,7 +113,7 @@ mod tests {
             id: id.to_string(),
             kind: IRNodeKind::Action,
             label: label.to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 

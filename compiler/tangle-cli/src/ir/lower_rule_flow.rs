@@ -64,7 +64,7 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
             id: id.clone(),
             kind: IRNodeKind::Terminal,
             label: "empty".into(),
-            source_span: None,
+            source_span: None, source_text: None,
         });
         id
     });
@@ -84,7 +84,7 @@ fn register_node(
     if entry_id.is_none() {
         *entry_id = Some(node_id.clone());
     }
-    nodes.push(IRNode { id: node_id, kind, label, source_span: None });
+    nodes.push(IRNode { id: node_id, kind, label, source_span: None, source_text: None });
 }
 
 /// Parse standalone node declaration: A[Label] -> (id, label, is_error)

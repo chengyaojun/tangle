@@ -8,7 +8,7 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
         id: entry_id.clone(),
         kind: IRNodeKind::Compute,
         label: "toggle.entry".into(),
-        source_span: None,
+        source_span: None, source_text: None,
     });
 
     for line in checkbox_markdown.lines() {
@@ -44,7 +44,7 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
             id: node_id.clone(),
             kind: IRNodeKind::Compute,
             label: format!("{} = {}", name, checked),
-            source_span: None,
+            source_span: None, source_text: None,
         });
         graph.edges.push(IREdge {
             from: entry_id.clone(),

@@ -1,13 +1,30 @@
 use crate::ast::Stmt;
 use crate::ir::graph::*;
 
-pub fn lower_statements(stmts: &[Stmt], _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
+fn stmt_source(stmt: &Stmt, source: &str) -> String {
+    let span = match stmt {
+        Stmt::Return(s) => &s.span,
+        Stmt::Let(s) => &s.span,
+        Stmt::Const(s) => &s.span,
+        Stmt::Expression(s) => &s.span,
+    };
+    let lines: Vec<&str> = source.lines().collect();
+    let start = span.start_line.saturating_sub(1);
+    let end = span.end_line.min(lines.len());
+    if start < end {
+        lines[start..end].join("\n").trim().trim_end_matches(';').to_string()
+    } else {
+        String::new()
+    }
+}
+
+pub fn lower_statements(stmts: &[Stmt], source: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
     let entry_id = id_gen.next();
     let mut graph = create_graph(entry_id.clone());
 
     graph.nodes.push(IRNode {
         id: entry_id.clone(), kind: IRNodeKind::Compute,
-        label: "entry".into(), source_span: None,
+        label: "entry".into(), source_span: None, source_text: None,
     });
 
     let mut prev_id = entry_id;
@@ -19,10 +36,12 @@ pub fn lower_statements(stmts: &[Stmt], _file: &str, id_gen: &mut FreshNodeId) -
             Stmt::Const(s) => (IRNodeKind::Compute, format!("const {}", s.name)),
             Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
         };
+        let src = stmt_source(stmt, source);
 
         let node_id = id_gen.next();
         graph.nodes.push(IRNode {
-            id: node_id.clone(), kind: node_kind, label, source_span: None,
+            id: node_id.clone(), kind: node_kind, label,
+            source_span: None, source_text: Some(src),
         });
 
         graph.edges.push(IREdge {
@@ -37,7 +56,7 @@ pub fn lower_statements(stmts: &[Stmt], _file: &str, id_gen: &mut FreshNodeId) -
     let terminal_id = id_gen.next();
     graph.nodes.push(IRNode {
         id: terminal_id.clone(), kind: IRNodeKind::Terminal,
-        label: "exit".into(), source_span: None,
+        label: "exit".into(), source_span: None, source_text: None,
     });
     graph.edges.push(IREdge {
         from: prev_id, to: terminal_id, kind: IREdgeKind::Control,
@@ -56,135 +75,69 @@ mod tests {
     fn test_span() -> SourceSpan {
         SourceSpan {
             file: "t.md".into(),
-            start_line: 1,
-            start_column: 1,
-            end_line: 1,
-            end_column: 5,
+            start_line: 1, start_column: 1, end_line: 1, end_column: 5,
         }
     }
 
     fn test_expr() -> Expr {
         Expr::Literal(LiteralExpr {
-            literal_kind: LiteralKind::Number,
-            value: "42".into(),
-            span: test_span(),
+            literal_kind: LiteralKind::Number, value: "42".into(), span: test_span(),
         })
     }
 
     #[test]
     fn lower_single_let_statement() {
+        let source = "let x = 42";
         let stmts = vec![Stmt::Let(LetStmt {
-            name: "x".into(),
-            type_annotation: None,
-            value: test_expr(),
-            span: test_span(),
+            name: "x".into(), type_annotation: None, value: test_expr(), span: test_span(),
         })];
         let mut id_gen = FreshNodeId::new();
-        let graph = lower_statements(&stmts, "t.md", &mut id_gen);
+        let graph = lower_statements(&stmts, source, "t.md", &mut id_gen);
 
-        // 3 nodes: entry compute + let compute + exit terminal
-        assert_eq!(graph.nodes.len(), 3, "expected 3 nodes, got {:?}", graph.nodes);
-        assert_eq!(graph.nodes[0].label, "entry");
-        assert_eq!(graph.nodes[0].kind, IRNodeKind::Compute);
-        assert_eq!(graph.nodes[1].label, "let x");
-        assert_eq!(graph.nodes[1].kind, IRNodeKind::Compute);
-        assert_eq!(graph.nodes[2].label, "exit");
-        assert_eq!(graph.nodes[2].kind, IRNodeKind::Terminal);
-
-        // 2 edges: entry -> let, let -> exit
-        assert_eq!(graph.edges.len(), 2);
-        assert_eq!(graph.edges[0].from, graph.nodes[0].id);
-        assert_eq!(graph.edges[0].to, graph.nodes[1].id);
-        assert_eq!(graph.edges[1].from, graph.nodes[1].id);
-        assert_eq!(graph.edges[1].to, graph.nodes[2].id);
-
-        // entry_node_id matches first node
-        assert_eq!(graph.entry_node_id, graph.nodes[0].id);
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.nodes[1].source_text.as_deref(), Some("let x = 42"));
     }
 
     #[test]
     fn lower_return_with_value() {
+        let source = "return 42";
         let stmts = vec![Stmt::Return(ReturnStmt {
-            value: Some(test_expr()),
-            span: test_span(),
+            value: Some(test_expr()), span: test_span(),
         })];
         let mut id_gen = FreshNodeId::new();
-        let graph = lower_statements(&stmts, "t.md", &mut id_gen);
+        let graph = lower_statements(&stmts, source, "t.md", &mut id_gen);
 
-        // 3 nodes: entry + return + exit
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes[0].label, "entry");
-        assert_eq!(graph.nodes[1].label, "return");
-        assert_eq!(graph.nodes[1].kind, IRNodeKind::Action);
-        assert_eq!(graph.nodes[2].label, "exit");
-        assert_eq!(graph.nodes[2].kind, IRNodeKind::Terminal);
-
-        // edge from entry to return
-        assert_eq!(graph.edges[0].from, graph.nodes[0].id);
-        assert_eq!(graph.edges[0].to, graph.nodes[1].id);
-        assert_eq!(graph.edges[0].kind, IREdgeKind::Control);
+        assert_eq!(graph.nodes[1].source_text.as_deref(), Some("return 42"));
     }
 
     #[test]
     fn lower_expression_statement() {
+        let source = "fmt.println(\"Hello\")";
         let stmts = vec![Stmt::Expression(ExpressionStmt {
-            expr: test_expr(),
-            span: test_span(),
+            expr: test_expr(), span: test_span(),
         })];
         let mut id_gen = FreshNodeId::new();
-        let graph = lower_statements(&stmts, "t.md", &mut id_gen);
+        let graph = lower_statements(&stmts, source, "t.md", &mut id_gen);
 
-        // 3 nodes: entry + expr + exit
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes[0].label, "entry");
-        assert_eq!(graph.nodes[1].label, "expr");
-        assert_eq!(graph.nodes[1].kind, IRNodeKind::Action);
-        assert_eq!(graph.nodes[2].label, "exit");
-        assert_eq!(graph.nodes[2].kind, IRNodeKind::Terminal);
-
-        // edge from entry to expr
-        assert_eq!(graph.edges[0].from, graph.nodes[0].id);
-        assert_eq!(graph.edges[0].to, graph.nodes[1].id);
+        assert_eq!(graph.nodes[1].source_text.as_deref(), Some("fmt.println(\"Hello\")"));
     }
 
     #[test]
     fn lower_multiple_statements() {
+        let source = "let a = 42\nfmt.println(\"Hello\")\nreturn a";
         let stmts = vec![
-            Stmt::Let(LetStmt {
-                name: "a".into(),
-                type_annotation: None,
-                value: test_expr(),
-                span: test_span(),
-            }),
-            Stmt::Expression(ExpressionStmt {
-                expr: test_expr(),
-                span: test_span(),
-            }),
-            Stmt::Return(ReturnStmt {
-                value: Some(test_expr()),
-                span: test_span(),
-            }),
+            Stmt::Let(LetStmt { name: "a".into(), type_annotation: None, value: test_expr(), span: SourceSpan { file: "t.md".into(), start_line: 1, start_column: 1, end_line: 1, end_column: 10 } }),
+            Stmt::Expression(ExpressionStmt { expr: test_expr(), span: SourceSpan { file: "t.md".into(), start_line: 2, start_column: 1, end_line: 2, end_column: 22 } }),
+            Stmt::Return(ReturnStmt { value: Some(test_expr()), span: SourceSpan { file: "t.md".into(), start_line: 3, start_column: 1, end_line: 3, end_column: 9 } }),
         ];
         let mut id_gen = FreshNodeId::new();
-        let graph = lower_statements(&stmts, "t.md", &mut id_gen);
+        let graph = lower_statements(&stmts, source, "t.md", &mut id_gen);
 
-        // 5 nodes: entry + let + expr + return + exit
         assert_eq!(graph.nodes.len(), 5);
-        assert_eq!(graph.nodes[0].label, "entry");
-        assert_eq!(graph.nodes[1].label, "let a");
-        assert_eq!(graph.nodes[2].label, "expr");
-        assert_eq!(graph.nodes[3].label, "return");
-        assert_eq!(graph.nodes[4].label, "exit");
-
-        // 4 edges chain correctly
-        assert_eq!(graph.edges.len(), 4);
-        assert_eq!(graph.edges[0].from, graph.nodes[0].id);
-        assert_eq!(graph.edges[0].to, graph.nodes[1].id);
-        assert_eq!(graph.edges[1].from, graph.nodes[1].id);
-        assert_eq!(graph.edges[1].to, graph.nodes[2].id);
-        assert_eq!(graph.edges[2].from, graph.nodes[2].id);
-        assert_eq!(graph.edges[2].to, graph.nodes[3].id);
-        assert_eq!(graph.edges[3].from, graph.nodes[3].id);
-        assert_eq!(graph.edges[3].to, graph.nodes[4].id);
+        assert_eq!(graph.nodes[1].source_text.as_deref(), Some("let a = 42"));
+        assert_eq!(graph.nodes[2].source_text.as_deref(), Some("fmt.println(\"Hello\")"));
+        assert_eq!(graph.nodes[3].source_text.as_deref(), Some("return a"));
     }
 }

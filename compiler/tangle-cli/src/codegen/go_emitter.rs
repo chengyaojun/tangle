@@ -118,7 +118,7 @@ mod tests {
             id: id.to_string(),
             kind,
             label: label.to_string(),
-            source_span: None,
+            source_span: None, source_text: None,
         }
     }
 

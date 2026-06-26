@@ -15,7 +15,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
 
     // Lower @tangle code blocks as statements
     for block in &checked.parsed_blocks {
-        let sub_graph = lower_statements(&block.body.statements, &checked.file, &mut id_gen);
+        let sub_graph = lower_statements(&block.body.statements, &block.source, &checked.file, &mut id_gen);
         match &mut merged_graph {
             None => merged_graph = Some(sub_graph),
             Some(ref mut g) => {
@@ -45,7 +45,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         let mut g = create_graph(entry_id.clone());
         g.nodes.push(IRNode {
             id: entry_id.clone(), kind: IRNodeKind::Terminal,
-            label: "empty".into(), source_span: None,
+            label: "empty".into(), source_span: None, source_text: None,
         });
         g
     });
