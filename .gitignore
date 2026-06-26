@@ -3,6 +3,11 @@ node_modules/
 
 # Build output
 dist/
+reference/dist/
+
+# Rust
+target/
+**/target/
 
 # IDE
 .vscode/
