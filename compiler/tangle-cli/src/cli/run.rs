@@ -34,7 +34,7 @@ pub fn execute(opts: RunOptions) {
 
     // Check incremental cache if enabled
     if opts.incremental {
-        let cache_dir = Path::new(".tangle-cache");
+        let cache_dir = Path::new(".cache");
         let mut inc_cache = crate::incremental::cache::IncrementalCache::new(cache_dir);
         let ir_cache = crate::ir::cache::IrCache::new(cache_dir);
         let fp = crate::incremental::fingerprint::source_fingerprint(&source);

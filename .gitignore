@@ -38,4 +38,4 @@ coverage/
 # Claude / AI agent artifacts
 .claude/
 .codex/
-.tangle-cache/
+.cache/

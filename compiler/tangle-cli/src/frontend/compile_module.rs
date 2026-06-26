@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_real_approval_flow_file() {
-        let source = std::fs::read_to_string("../../test-cases/rules/approval-flow.tangle.md")
+        let source = std::fs::read_to_string("../../tests/rules/approval-flow.tangle.md")
             .expect("Failed to read test file");
         let module = compile_module(CompileModuleInput {
             file: "approval-flow.tangle.md".into(),
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_full_pipeline_to_ir() {
-        let source = std::fs::read_to_string("../../test-cases/rules/approval-flow.tangle.md")
+        let source = std::fs::read_to_string("../../tests/rules/approval-flow.tangle.md")
             .expect("Failed to read test file");
 
         let module = compile_module(CompileModuleInput {
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_table_to_ir() {
-        let source = std::fs::read_to_string("../../test-cases/rules/decision-table.tangle.md")
+        let source = std::fs::read_to_string("../../tests/rules/decision-table.tangle.md")
             .expect("Failed to read test file");
 
         let module = compile_module(CompileModuleInput {
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_tree_to_ir() {
-        let source = std::fs::read_to_string("../../test-cases/rules/decision-tree.tangle.md")
+        let source = std::fs::read_to_string("../../tests/rules/decision-tree.tangle.md")
             .expect("Failed to read test file");
 
         let module = compile_module(CompileModuleInput {
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_toggle_to_ir() {
-        let source = std::fs::read_to_string("../../test-cases/rules/feature-toggles.tangle.md")
+        let source = std::fs::read_to_string("../../tests/rules/feature-toggles.tangle.md")
             .expect("Failed to read test file");
 
         let module = compile_module(CompileModuleInput {
