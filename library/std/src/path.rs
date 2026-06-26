@@ -1,3 +1,13 @@
+//! Path — path string manipulation.
+//!
+//! ## Host Mappings
+//! | Go | Rust | Python |
+//! |----|------|--------|
+//! | path/filepath | std::path | os.path |
+//!
+//! ## Operations
+//! join, basename, dirname, extension, is_absolute, normalize, relative, split
+
 /// Path manipulation — join, split, extension (Go: path/filepath, Rust: std::path, Python: os.path)
 pub struct PathSpec;
 

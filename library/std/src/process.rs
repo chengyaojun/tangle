@@ -1,3 +1,13 @@
+//! Process — external command execution.
+//!
+//! ## Host Mappings
+//! | Go | Rust | Python |
+//! |----|------|--------|
+//! | os/exec | std::process::Command | subprocess |
+//!
+//! ## Operations
+//! run, exec, spawn, exit, pid, args, stdout, stderr, status
+
 /// Subprocess execution — run external commands
 /// (Go: os/exec, Rust: std::process::Command, Python: subprocess)
 pub struct ProcessSpec;
