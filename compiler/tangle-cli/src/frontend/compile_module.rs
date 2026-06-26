@@ -282,3 +282,144 @@ fn stable_heading_id(title: &str) -> String {
         .split('-').filter(|s| !s.is_empty())
         .collect::<Vec<_>>().join("-")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_rule_heading() {
+        assert!(is_rule_heading("Rule: Approval"));
+        assert!(is_rule_heading("rule: ScoreCard"));
+        assert!(is_rule_heading("Rule:CreditCheck"));
+        assert!(!is_rule_heading("ApprovalTest"));
+        assert!(!is_rule_heading("main"));
+    }
+
+    #[test]
+    fn test_determine_rule_kind_flow() {
+        let source = "```mermaid\ngraph TD\n    A --> B\n```";
+        assert_eq!(determine_rule_kind(source), Some(RuleKind::Flow));
+    }
+
+    #[test]
+    fn test_determine_rule_kind_table() {
+        let source = "| A | B |\n| 1 | 2 |\n| 3 | 4 |";
+        assert_eq!(determine_rule_kind(source), Some(RuleKind::Table));
+    }
+
+    #[test]
+    fn test_determine_rule_kind_toggle() {
+        let source = "- [x] enable_feature\n- [ ] disable_feature";
+        assert_eq!(determine_rule_kind(source), Some(RuleKind::Toggle));
+    }
+
+    #[test]
+    fn test_determine_rule_kind_tree() {
+        let source = "* condition 1\n* condition 2";
+        assert_eq!(determine_rule_kind(source), Some(RuleKind::Tree));
+    }
+
+    #[test]
+    fn test_rule_heading_detection_flow() {
+        let source = "# Test\n\n##### Rule: Approval\n\n```mermaid\ngraph TD\n    A --> B\n```\n";
+        let module = compile_module(CompileModuleInput {
+            file: "test.md".into(),
+            source: source.into(),
+        });
+
+        // Find the rule heading (depth 5)
+        let rule_heading: Vec<_> = module.headings.iter()
+            .flat_map(|h| h.children.iter())
+            .filter(|h| h.depth == 5 && is_rule_heading(&h.title))
+            .collect();
+
+        assert!(!rule_heading.is_empty(), "Should find Rule: heading");
+        let heading = rule_heading[0];
+        assert!(heading.rule.is_some(), "Rule heading should have rule data");
+        let rule = heading.rule.as_ref().unwrap();
+        assert_eq!(rule.kind, RuleKind::Flow);
+        assert!(rule.source.contains("graph TD"));
+    }
+
+    #[test]
+    fn test_rule_heading_detection_table() {
+        let source = "# Test\n\n##### Rule: ScoreCard\n\n| A | B |\n|---|---|\n| 1 | 2 |\n";
+        let module = compile_module(CompileModuleInput {
+            file: "test.md".into(),
+            source: source.into(),
+        });
+
+        let rule_heading: Vec<_> = module.headings.iter()
+            .flat_map(|h| h.children.iter())
+            .filter(|h| h.depth == 5 && is_rule_heading(&h.title))
+            .collect();
+
+        assert!(!rule_heading.is_empty());
+        let rule = rule_heading[0].rule.as_ref().unwrap();
+        assert_eq!(rule.kind, RuleKind::Table);
+    }
+
+    #[test]
+    fn test_real_approval_flow_file() {
+        let source = std::fs::read_to_string("../../test-cases/rules/approval-flow.tangle.md")
+            .expect("Failed to read test file");
+        let module = compile_module(CompileModuleInput {
+            file: "approval-flow.tangle.md".into(),
+            source,
+        });
+
+        // Find rule heading recursively
+        fn find_rule(headings: &[TangleHeading]) -> Option<&TangleHeading> {
+            for h in headings {
+                if h.rule.is_some() { return Some(h); }
+                if let Some(found) = find_rule(&h.children) { return Some(found); }
+            }
+            None
+        }
+
+        let rule_heading = find_rule(&module.headings);
+        assert!(rule_heading.is_some(), "Should find rule heading in approval-flow.tangle.md");
+        let rule = rule_heading.unwrap().rule.as_ref().unwrap();
+        assert_eq!(rule.kind, RuleKind::Flow, "Expected Flow rule kind");
+        assert!(rule.source.contains("graph TD"), "Rule source should contain graph TD");
+    }
+
+    #[test]
+    fn test_full_pipeline_to_ir() {
+        let source = std::fs::read_to_string("../../test-cases/rules/approval-flow.tangle.md")
+            .expect("Failed to read test file");
+
+        let module = compile_module(CompileModuleInput {
+            file: "approval-flow.tangle.md".into(),
+            source: source.clone(),
+        });
+
+        fn find_first_rule(headings: &[TangleHeading]) -> Option<&crate::model::RuleData> {
+            for h in headings {
+                if let Some(ref r) = h.rule { return Some(r); }
+                if let Some(r) = find_first_rule(&h.children) { return Some(r); }
+            }
+            None
+        }
+        let rule_data = find_first_rule(&module.headings).expect("Should find rule");
+        assert_eq!(rule_data.kind, RuleKind::Flow);
+
+        // Debug: print the rule source
+        eprintln!("=== Rule source ({} chars) ===", rule_data.source.len());
+        for (i, line) in rule_data.source.lines().enumerate() {
+            eprintln!("  L{}: {:?}", i+1, line);
+        }
+
+        use crate::ir::graph::FreshNodeId;
+        use crate::ir::lower_rule_flow::lower_rule_flow;
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(&rule_data.source, "test.md", &mut id_gen);
+        eprintln!("=== IR nodes ===");
+        for n in &graph.nodes {
+            eprintln!("  {}: {:?} \"{}\"", n.id, n.kind, n.label);
+        }
+        assert!(graph.nodes.len() >= 2, "Expected >=2 nodes, got {}: {:?}",
+            graph.nodes.len(), graph.nodes.iter().map(|n| &n.label).collect::<Vec<_>>());
+    }
+}
