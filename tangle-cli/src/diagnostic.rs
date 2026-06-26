@@ -38,6 +38,6 @@ pub fn render_diagnostics(diagnostics: &[TangleDiagnostic], source: &str, file: 
         let config = term::Config::default();
         if let Err(e) = term::emit(&mut writer.lock(), &config, &files, &diagnostic) {
             eprintln!("Failed to render diagnostic: {}", e);
-        }
+        };
     }
 }
