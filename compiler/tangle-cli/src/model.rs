@@ -53,6 +53,23 @@ pub struct TangleCodeBlock {
     pub span: SourceSpan,
 }
 
+/// 规则种类（四种规则形式）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RuleKind {
+    Flow,    // Mermaid graph TD
+    Table,   // Markdown pipe table
+    Tree,    // Nested bullet lists
+    Toggle,  // Checkbox lists
+}
+
+/// 规则数据（前端提取的规则体源码）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuleData {
+    pub kind: RuleKind,
+    pub source: String,
+    pub span: SourceSpan,
+}
+
 /// 标题节点（树结构 — 子标题嵌套）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TangleHeading {
@@ -64,6 +81,7 @@ pub struct TangleHeading {
     pub directives: Vec<TangleDirective>,
     pub params: Vec<TangleParam>,
     pub code_blocks: Vec<TangleCodeBlock>,
+    pub rule: Option<RuleData>,
     pub span: SourceSpan,
     pub children: Vec<TangleHeading>,
 }

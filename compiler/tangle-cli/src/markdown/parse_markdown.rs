@@ -90,9 +90,27 @@ pub fn parse_markdown(source: &str, _file: &str) -> Vec<MarkdownNode> {
                             depth: None, lang: None, url: None, checked: None, position: Some(pos),
                         });
                     }
-                    Tag::Table(..) | Tag::TableHead | Tag::TableRow => {
+                    Tag::Table(..) => {
                         stack.push(MarkdownNode {
-                            node_type: "html".into(), children: vec![], value: None,
+                            node_type: "table".into(), children: vec![], value: None,
+                            depth: None, lang: None, url: None, checked: None, position: Some(pos),
+                        });
+                    }
+                    Tag::TableHead => {
+                        stack.push(MarkdownNode {
+                            node_type: "tableHead".into(), children: vec![], value: None,
+                            depth: None, lang: None, url: None, checked: None, position: Some(pos),
+                        });
+                    }
+                    Tag::TableRow => {
+                        stack.push(MarkdownNode {
+                            node_type: "tableRow".into(), children: vec![], value: None,
+                            depth: None, lang: None, url: None, checked: None, position: Some(pos),
+                        });
+                    }
+                    Tag::TableCell => {
+                        stack.push(MarkdownNode {
+                            node_type: "tableCell".into(), children: vec![], value: None,
                             depth: None, lang: None, url: None, checked: None, position: Some(pos),
                         });
                     }
@@ -104,7 +122,7 @@ pub fn parse_markdown(source: &str, _file: &str) -> Vec<MarkdownNode> {
                 match tag_end {
                     TagEnd::Heading(..) | TagEnd::CodeBlock | TagEnd::List(..)
                     | TagEnd::Item | TagEnd::Link | TagEnd::Paragraph
-                    | TagEnd::BlockQuote | TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow => {
+                    | TagEnd::BlockQuote | TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow | TagEnd::TableCell => {
                         if let Some(completed) = stack.pop() {
                             if let Some(parent) = stack.last_mut() {
                                 parent.children.push(completed);

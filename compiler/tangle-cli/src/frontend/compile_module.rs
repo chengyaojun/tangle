@@ -73,7 +73,7 @@ fn extract_headings(
             current_heading = Some(TangleHeading {
                 id, depth, role, title: parsed.title,
                 symbol_name: parsed.symbol_name, directives: vec![],
-                params: vec![], code_blocks: vec![], span, children: vec![],
+                params: vec![], code_blocks: vec![], rule: None, span, children: vec![],
             });
         } else if current_heading.is_some() {
             if node.node_type == "list" {

@@ -51,3 +51,13 @@ pub fn plain_text(node: &MarkdownNode) -> String {
     if node.node_type == "text" { return node.value.clone().unwrap_or_default(); }
     node.children.iter().map(plain_text).collect::<Vec<_>>().join("")
 }
+
+/// Check if a code block is a Mermaid diagram
+pub fn is_mermaid_code_block(node: &MarkdownNode) -> bool {
+    node.node_type == "code" && node.lang.as_deref() == Some("mermaid")
+}
+
+/// Check if a list item is a checkbox item
+pub fn is_checkbox_item(node: &MarkdownNode) -> bool {
+    node.node_type == "listItem" && node.checked.is_some()
+}
