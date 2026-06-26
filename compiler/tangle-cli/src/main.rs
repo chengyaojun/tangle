@@ -19,6 +19,9 @@ enum Command {
         /// Target language (js, py, go) [default: js]
         #[arg(long, default_value = "js")]
         target: String,
+        /// Enable incremental compilation (skip unchanged files)
+        #[arg(long)]
+        incremental: bool,
     },
     /// Run tests
     Test {
@@ -38,8 +41,8 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Command::Run { file, emit_ir, target } => {
-            cli::run::execute(cli::run::RunOptions { file, emit_ir, target });
+        Command::Run { file, emit_ir, target, incremental } => {
+            cli::run::execute(cli::run::RunOptions { file, emit_ir, target, incremental });
         }
         Command::Test { filter } => cli::test::execute(filter.as_deref()),
         Command::Lsp => {

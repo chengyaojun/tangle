@@ -123,3 +123,137 @@ pub struct TangleModule {
     pub symbols: Vec<TangleSymbol>,
     pub diagnostics: Vec<TangleDiagnostic>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_source_span_construction() {
+        let span = SourceSpan {
+            file: "test.md".into(), start_line: 1, start_column: 1, end_line: 3, end_column: 10,
+        };
+        assert_eq!(span.file, "test.md");
+        assert_eq!(span.start_line, 1);
+        assert_eq!(span.end_line, 3);
+    }
+
+    #[test]
+    fn test_heading_role_values() {
+        assert_eq!(heading_role_for_depth_for_test(1), HeadingRole::Program);
+        assert_eq!(heading_role_for_depth_for_test(3), HeadingRole::Type);
+        assert_eq!(heading_role_for_depth_for_test(5), HeadingRole::SemanticSection);
+    }
+
+    fn heading_role_for_depth_for_test(depth: usize) -> HeadingRole {
+        match depth {
+            1 => HeadingRole::Program, 2 => HeadingRole::Section,
+            3 => HeadingRole::Type, 4 => HeadingRole::Callable,
+            5 => HeadingRole::SemanticSection, 6 => HeadingRole::SemanticAtom,
+            _ => HeadingRole::Section,
+        }
+    }
+
+    #[test]
+    fn test_tangle_heading_tree() {
+        let span = SourceSpan { file: "t.md".into(), start_line: 1, start_column: 1, end_line: 1, end_column: 5 };
+        let child = TangleHeading {
+            id: "child".into(), depth: 5, role: HeadingRole::SemanticSection,
+            title: "Rule: Test".into(), symbol_name: None, directives: vec![],
+            params: vec![], code_blocks: vec![], rule: None, span: span.clone(), children: vec![],
+        };
+        let parent = TangleHeading {
+            id: "parent".into(), depth: 1, role: HeadingRole::Program,
+            title: "Test".into(), symbol_name: Some("Test".into()), directives: vec![],
+            params: vec![], code_blocks: vec![], rule: None, span: span.clone(),
+            children: vec![child],
+        };
+        assert_eq!(parent.children.len(), 1);
+        assert_eq!(parent.children[0].title, "Rule: Test");
+    }
+
+    #[test]
+    fn test_rule_kind_values() {
+        assert_eq!(RuleKind::Flow as u8, 0); // discriminant check
+        assert_ne!(RuleKind::Flow, RuleKind::Table);
+    }
+
+    #[test]
+    fn test_rule_data_construction() {
+        let data = RuleData {
+            kind: RuleKind::Flow,
+            source: "graph TD\nA-->B".into(),
+            span: SourceSpan { file: "x.md".into(), start_line: 1, start_column: 1, end_line: 2, end_column: 5 },
+        };
+        assert_eq!(data.kind, RuleKind::Flow);
+        assert!(data.source.contains("graph TD"));
+    }
+
+    #[test]
+    fn test_tangle_module_construction() {
+        let module = TangleModule {
+            file: "test.md".into(), module_name: "test".into(),
+            imports: vec![], headings: vec![], symbols: vec![], diagnostics: vec![],
+        };
+        assert_eq!(module.module_name, "test");
+    }
+
+    #[test]
+    fn test_symbol_kind_values() {
+        assert_eq!(SymbolKind::Entry as u8, 0);
+        assert_eq!(SymbolKind::Type as u8, 1);
+        assert_eq!(SymbolKind::Callable as u8, 2);
+    }
+
+    #[test]
+    fn test_diagnostic_creation() {
+        let diag = TangleDiagnostic {
+            code: "E001".into(), message: "test error".into(),
+            span: SourceSpan { file: "f.md".into(), start_line: 1, start_column: 1, end_line: 1, end_column: 1 },
+        };
+        assert_eq!(diag.code, "E001");
+        assert!(diag.message.contains("test"));
+    }
+
+    #[test]
+    fn test_serde_source_span_roundtrip() {
+        let span = SourceSpan { file: "x.md".into(), start_line: 2, start_column: 3, end_line: 4, end_column: 5 };
+        let json = serde_json::to_string(&span).unwrap();
+        let back: SourceSpan = serde_json::from_str(&json).unwrap();
+        assert_eq!(span, back);
+    }
+
+    #[test]
+    fn test_serde_rule_kind_roundtrip() {
+        for kind in [RuleKind::Flow, RuleKind::Table, RuleKind::Tree, RuleKind::Toggle] {
+            let json = serde_json::to_string(&kind).unwrap();
+            let back: RuleKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(kind, back);
+        }
+    }
+
+    #[test]
+    fn test_serde_tangle_module_roundtrip() {
+        let module = TangleModule {
+            file: "m.md".into(), module_name: "m".into(),
+            imports: vec![], headings: vec![], symbols: vec![], diagnostics: vec![],
+        };
+        let json = serde_json::to_string(&module).unwrap();
+        let back: TangleModule = serde_json::from_str(&json).unwrap();
+        assert_eq!(module.module_name, back.module_name);
+    }
+
+    #[test]
+    fn test_heading_with_rule_data() {
+        let span = SourceSpan { file: "h.md".into(), start_line: 1, start_column: 1, end_line: 1, end_column: 1 };
+        let heading = TangleHeading {
+            id: "h1".into(), depth: 5, role: HeadingRole::SemanticSection,
+            title: "Rule: Test".into(), symbol_name: None, directives: vec![],
+            params: vec![], code_blocks: vec![],
+            rule: Some(RuleData { kind: RuleKind::Flow, source: "graph TD".into(), span: span.clone() }),
+            span, children: vec![],
+        };
+        assert!(heading.rule.is_some());
+        assert_eq!(heading.rule.unwrap().kind, RuleKind::Flow);
+    }
+}

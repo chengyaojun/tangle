@@ -279,3 +279,85 @@ pub struct ParsedCodeBlock {
     pub body: CodeBody,
     pub diagnostics: Vec<crate::model::TangleDiagnostic>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::SourceSpan;
+
+    fn test_span() -> SourceSpan {
+        SourceSpan { file: "t.md".into(), start_line: 1, start_column: 1, end_line: 1, end_column: 5 }
+    }
+
+    #[test]
+    fn test_literal_expr() {
+        let e = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "42".into(), span: test_span() });
+        assert!(matches!(e, Expr::Literal(_)));
+    }
+
+    #[test]
+    fn test_binary_expr() {
+        let left = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "1".into(), span: test_span() });
+        let right = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "2".into(), span: test_span() });
+        let e = Expr::Binary(BinaryExpr { op: BinaryOp::Add, left: Box::new(left), right: Box::new(right), span: test_span() });
+        if let Expr::Binary(b) = &e {
+            assert_eq!(b.op, BinaryOp::Add);
+        }
+    }
+
+    #[test]
+    fn test_if_expr() {
+        let cond = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Boolean, value: "true".into(), span: test_span() });
+        let then = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "1".into(), span: test_span() });
+        let e = Expr::If(IfExpr { condition: Box::new(cond), then_branch: Box::new(then), else_branch: None, span: test_span() });
+        assert!(matches!(e, Expr::If(_)));
+    }
+
+    #[test]
+    fn test_match_expr() {
+        let expr = Expr::Identifier(IdentifierExpr { name: "x".into(), span: test_span() });
+        let arm = MatchArm { pattern: MatchPattern::Wildcard, body: Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Boolean, value: "true".into(), span: test_span() }), span: test_span() };
+        let e = Expr::Match(MatchExpr { expr: Box::new(expr), arms: vec![arm], span: test_span() });
+        if let Expr::Match(m) = &e { assert_eq!(m.arms.len(), 1); }
+    }
+
+    #[test]
+    fn test_return_stmt() {
+        let val = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::String, value: "ok".into(), span: test_span() });
+        let s = Stmt::Return(ReturnStmt { value: Some(val), span: test_span() });
+        assert!(matches!(s, Stmt::Return(_)));
+    }
+
+    #[test]
+    fn test_let_stmt() {
+        let val = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "42".into(), span: test_span() });
+        let s = Stmt::Let(LetStmt { name: "x".into(), type_annotation: None, value: val, span: test_span() });
+        if let Stmt::Let(l) = &s { assert_eq!(l.name, "x"); }
+    }
+
+    #[test]
+    fn test_code_body() {
+        let body = CodeBody { statements: vec![], span: test_span() };
+        assert!(body.statements.is_empty());
+    }
+
+    #[test]
+    fn test_type_expr_primitives() {
+        let t = TypeExpr::Primitive(PrimitiveTypeExpr { name: "String".into(), span: test_span() });
+        assert!(matches!(t, TypeExpr::Primitive(_)));
+    }
+
+    #[test]
+    fn test_arrow_expr_construction() {
+        let body = Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "1".into(), span: test_span() });
+        let e = Expr::Arrow(ArrowExpr { params: vec![ArrowParam { name: "x".into(), span: test_span() }], body: Box::new(body), span: test_span() });
+        if let Expr::Arrow(a) = &e { assert_eq!(a.params.len(), 1); }
+    }
+
+    #[test]
+    fn test_propagation_expr() {
+        let inner = Expr::Identifier(IdentifierExpr { name: "f".into(), span: test_span() });
+        let e = Expr::Propagation(PropagationExpr { expr: Box::new(inner), span: test_span() });
+        assert!(matches!(e, Expr::Propagation(_)));
+    }
+}
