@@ -23,6 +23,12 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str("    return Result{Ok: false, Error: variant}\n");
     out.push_str("}\n\n");
 
+    // Stdlib prelude
+    out.push_str(crate::stdlib::bindings::stdlib_prelude(
+        crate::stdlib::bindings::TargetHost::Go
+    ));
+    out.push('\n');
+
     // Module function
     out.push_str(&format!("func {}() Result {{\n", to_camel(module_name)));
 

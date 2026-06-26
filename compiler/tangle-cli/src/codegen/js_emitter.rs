@@ -9,6 +9,12 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str(crate::codegen::js_prelude::RUNTIME_PRELUDE);
     out.push('\n');
 
+    // Stdlib prelude
+    out.push_str(crate::stdlib::bindings::stdlib_prelude(
+        crate::stdlib::bindings::TargetHost::JavaScript
+    ));
+    out.push('\n');
+
     // Module function
     out.push_str(&format!("function {}() {{\n", module_name));
 

@@ -8,3 +8,4 @@ pub mod checker;
 pub mod ir;
 pub mod codegen;
 pub mod cli;
+pub mod stdlib;

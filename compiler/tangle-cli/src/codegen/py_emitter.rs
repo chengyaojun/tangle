@@ -25,6 +25,12 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str("    return Result(False, value, variant)\n\n");
     out.push('\n');
 
+    // Stdlib prelude
+    out.push_str(crate::stdlib::bindings::stdlib_prelude(
+        crate::stdlib::bindings::TargetHost::Python
+    ));
+    out.push('\n');
+
     // Module function
     out.push_str(&format!("def {}() -> Result:\n", module_name));
 
