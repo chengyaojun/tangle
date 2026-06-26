@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tangle-lang.org/ir-schema.json",
+  "title": "Tangle Rule Graph IR",
+  "description": "Shared IR serialization format for Tangle compiler implementations. Both Track A (TypeScript) and Track B (Rust) MUST produce IR conforming to this schema.",
+  "type": "object",
+  "required": ["nodes", "edges", "errorEdges", "entryNodeId"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/IRNode" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/IREdge" }
+    },
+    "errorEdges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/IRErrorEdge" }
+    },
+    "entryNodeId": {
+      "type": "string",
+      "description": "ID of the entry node in the graph"
+    }
+  },
+  "$defs": {
+    "IRNode": {
+      "type": "object",
+      "required": ["id", "kind", "label"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["action", "compute", "decision", "terminal", "error-terminal"]
+        },
+        "label": { "type": "string" },
+        "sourceSpan": { "$ref": "#/$defs/SourceSpan" }
+      }
+    },
+    "IREdge": {
+      "type": "object",
+      "required": ["from", "to", "kind"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["control", "condition", "error"]
+        },
+        "guard": { "type": "string" },
+        "sourceSpan": { "$ref": "#/$defs/SourceSpan" }
+      }
+    },
+    "IRErrorEdge": {
+      "type": "object",
+      "required": ["from", "errorVariant"],
+      "properties": {
+        "from": { "type": "string" },
+        "errorVariant": { "type": "string" },
+        "sourceSpan": { "$ref": "#/$defs/SourceSpan" }
+      }
+    },
+    "SourceSpan": {
+      "type": "object",
+      "required": ["file", "startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "file": { "type": "string" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "endColumn": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
