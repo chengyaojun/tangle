@@ -70,17 +70,35 @@ fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
     for imp in imports {
         if !is_stdlib_import(&imp.target) { continue; }
         if let Some(operations) = stdlib_ops(&imp.target) {
-            let methods: HashMap<String, CallableSignature> = operations.iter().map(|op| {
-                (op.to_string(), CallableSignature {
-                    params: vec![],
-                    returns: Type::Primitive(PrimitiveType { name: "String".into() }),
-                })
-            }).collect();
-            env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
-                name: imp.target.clone(),
-                fields: HashMap::new(),
-                methods,
-            }));
+            // Split comma-separated aliases: [print, println](fmt)
+            let aliases: Vec<&str> = imp.alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let fn_import = aliases.len() > 1
+                || (aliases.len() == 1 && operations.contains(&aliases[0]));
+
+            if fn_import {
+                // Function import: [println](fmt) -> inject each as variable
+                for alias in &aliases {
+                    if operations.contains(alias) {
+                        env.variables.insert(alias.to_string(), Type::Function(FunctionType {
+                            params: vec![],
+                            returns: Box::new(Type::Primitive(PrimitiveType { name: "String".into() })),
+                        }));
+                    }
+                }
+            } else {
+                // Module import: [fmt](fmt) -> inject struct type
+                let methods: HashMap<String, CallableSignature> = operations.iter().map(|op| {
+                    (op.to_string(), CallableSignature {
+                        params: vec![],
+                        returns: Type::Primitive(PrimitiveType { name: "String".into() }),
+                    })
+                }).collect();
+                env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
+                    name: imp.target.clone(),
+                    fields: HashMap::new(),
+                    methods,
+                }));
+            }
         }
     }
 }

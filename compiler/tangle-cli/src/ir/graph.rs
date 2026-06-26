@@ -58,6 +58,8 @@ pub struct RuleGraph {
     pub entry_node_id: String,
     #[serde(default)]
     pub imported_stdlib: Vec<String>,
+    #[serde(default)]
+    pub stdlib_imports: Vec<(String, String)>,  // (alias, target_module)
 }
 
 pub struct FreshNodeId {
@@ -80,7 +82,7 @@ impl Default for RuleGraph {
     fn default() -> Self {
         RuleGraph {
             nodes: vec![], edges: vec![], error_edges: vec![],
-            entry_node_id: String::new(), imported_stdlib: vec![],
+            entry_node_id: String::new(), imported_stdlib: vec![], stdlib_imports: vec![],
         }
     }
 }
@@ -92,5 +94,6 @@ pub fn create_graph(entry_node_id: String) -> RuleGraph {
         error_edges: vec![],
         entry_node_id,
         imported_stdlib: vec![],
+        stdlib_imports: vec![],
     }
 }

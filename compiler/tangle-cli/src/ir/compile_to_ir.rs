@@ -50,10 +50,15 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         g
     });
 
-    // Collect stdlib import names (bare-name imports only)
-    graph.imported_stdlib = checked.imports.iter()
+    // Collect stdlib import names and alias mappings
+    graph.stdlib_imports = checked.imports.iter()
         .filter(|imp| !imp.target.contains('/') && !imp.target.contains('\\') && !imp.target.starts_with('.'))
-        .map(|imp| imp.target.clone())
+        .map(|imp| (imp.alias.clone(), imp.target.clone()))
+        .collect();
+    graph.imported_stdlib = graph.stdlib_imports.iter()
+        .map(|(_, target)| target.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
         .collect();
 
     let validate_diags = validate_ir(&graph);

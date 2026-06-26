@@ -19,6 +19,17 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
                 out.push_str(prelude);
             }
         }
+        // Function-level imports: [println](fmt) -> const println = fmt.println;
+        for (alias, module) in &graph.stdlib_imports {
+            if alias != module {
+                // Check if alias is comma-separated: [print, println](fmt)
+                for fn_name in alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    if fn_name != module {
+                        out.push_str(&format!("const {} = {}.{};\n", fn_name, module, fn_name));
+                    }
+                }
+            }
+        }
         out.push('\n');
     }
 
@@ -137,7 +148,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "test_module");
@@ -162,7 +173,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "workflow");
@@ -178,7 +189,7 @@ mod tests {
             edges: vec![],
             error_edges: vec![],
             entry_node_id: "missing".to_string(),
-            imported_stdlib: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_js(&graph, "empty_mod");

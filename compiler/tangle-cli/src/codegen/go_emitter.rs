@@ -142,7 +142,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_go(&graph, "test_module");
@@ -171,7 +171,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![],
         };
 
         let output = emit_go(&graph, "my.module-name");
