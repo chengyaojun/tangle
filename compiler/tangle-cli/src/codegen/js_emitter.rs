@@ -79,7 +79,7 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
 
     // Entry point invocation
     out.push_str(&format!(
-        "// Entry point\nconst __result = {module_name}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nconsole.log(__result.value);\n",
+        "// Entry point\nconst __result = {module_name}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nif (__result.value !== undefined) {{ console.log(__result.value); }}\n",
         module_name = module_name
     ));
 

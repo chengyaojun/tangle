@@ -47,7 +47,7 @@ pub fn execute(opts: RunOptions) {
                     return;
                 }
                 let code = emit_code(&opts.target, &cached_graph, module_name);
-                println!("{}", code);
+                execute_code(&opts.target, &code);
                 return;
             }
         }
@@ -63,7 +63,7 @@ pub fn execute(opts: RunOptions) {
             return;
         }
         let code = emit_code(&opts.target, &graph, module_name);
-        println!("{}", code);
+        execute_code(&opts.target, &code);
     } else {
         // Non-incremental: run full pipeline every time
         let graph = run_pipeline(&opts.file, &source);
@@ -73,7 +73,7 @@ pub fn execute(opts: RunOptions) {
             return;
         }
         let code = emit_code(&opts.target, &graph, module_name);
-        println!("{}", code);
+        execute_code(&opts.target, &code);
     }
 }
 
@@ -101,6 +101,49 @@ fn run_pipeline(file: &str, source: &str) -> crate::ir::graph::RuleGraph {
     }
 
     graph
+}
+
+/// Execute generated code via host runtime
+fn execute_code(target: &str, code: &str) {
+    match target {
+        "js" => {
+            let mut child = std::process::Command::new("node")
+                .arg("-e")
+                .arg(code)
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
+                .expect("Failed to execute node. Is Node.js installed?");
+            let _ = child.wait();
+        }
+        "py" => {
+            let mut child = std::process::Command::new("python3")
+                .arg("-c")
+                .arg(code)
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
+                .expect("Failed to execute python3");
+            let _ = child.wait();
+        }
+        "go" => {
+            // For Go, write to temp file, run, then clean up
+            let dir = std::env::temp_dir().join("tangle_go");
+            let _ = std::fs::create_dir_all(&dir);
+            let file = dir.join("main.go");
+            std::fs::write(&file, code).expect("Failed to write Go temp file");
+            let mut child = std::process::Command::new("go")
+                .arg("run")
+                .arg(&file)
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .current_dir(&dir)
+                .spawn()
+                .expect("Failed to execute go. Is Go installed?");
+            let _ = child.wait();
+        }
+        _ => println!("{}", code),
+    }
 }
 
 /// Dispatch codegen by target language
