@@ -54,7 +54,7 @@ pub struct TangleCodeBlock {
 }
 
 /// 标题节点（树结构 — 子标题嵌套）
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TangleHeading {
     pub id: String,
     pub depth: usize,
@@ -96,7 +96,7 @@ pub struct TangleDiagnostic {
 }
 
 /// DSL 编译单元（前端产出物）
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TangleModule {
     pub file: String,
     pub module_name: String,

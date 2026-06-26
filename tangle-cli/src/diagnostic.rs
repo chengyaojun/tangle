@@ -36,6 +36,8 @@ pub fn render_diagnostics(diagnostics: &[TangleDiagnostic], source: &str, file: 
             term::termcolor::ColorChoice::Auto,
         );
         let config = term::Config::default();
-        let _ = term::emit(&mut writer.lock(), &config, &files, &diagnostic);
+        if let Err(e) = term::emit(&mut writer.lock(), &config, &files, &diagnostic) {
+            eprintln!("Failed to render diagnostic: {}", e);
+        }
     }
 }
