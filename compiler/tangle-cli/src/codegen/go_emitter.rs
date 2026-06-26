@@ -101,3 +101,75 @@ fn to_camel(s: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_node(id: &str, kind: IRNodeKind, label: &str) -> IRNode {
+        IRNode {
+            id: id.to_string(),
+            kind,
+            label: label.to_string(),
+            source_span: None,
+        }
+    }
+
+    fn make_edge(from: &str, to: &str) -> IREdge {
+        IREdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            kind: IREdgeKind::Control,
+            guard: None,
+            source_span: None,
+        }
+    }
+
+    #[test]
+    fn emit_minimal_graph_produces_valid_go() {
+        let graph = RuleGraph {
+            nodes: vec![
+                make_node("n0", IRNodeKind::Action, "entry"),
+                make_node("n1", IRNodeKind::Terminal, "done"),
+            ],
+            edges: vec![make_edge("n0", "n1")],
+            error_edges: vec![],
+            entry_node_id: "n0".to_string(),
+        };
+
+        let output = emit_go(&graph, "test_module");
+
+        assert!(!output.is_empty());
+        assert!(output.contains("package main"));
+        assert!(output.contains("func TestModule()"));
+        assert!(output.contains("Tangle-generated Go"));
+        assert!(output.contains("type Result struct"));
+        assert!(output.contains("return Ok(nil)"));
+        assert!(output.contains("func main()"));
+        assert!(output.contains("result := TestModule()"));
+    }
+
+    #[test]
+    fn emit_graph_with_action_node_and_sanitized_module_name() {
+        let graph = RuleGraph {
+            nodes: vec![
+                make_node("n0", IRNodeKind::Action, "start"),
+                make_node("n1", IRNodeKind::Action, "do_work"),
+                make_node("n2", IRNodeKind::Terminal, "done"),
+            ],
+            edges: vec![
+                make_edge("n0", "n1"),
+                make_edge("n1", "n2"),
+            ],
+            error_edges: vec![],
+            entry_node_id: "n0".to_string(),
+        };
+
+        let output = emit_go(&graph, "my.module-name");
+
+        assert!(output.contains("// action: do_work"), "expected action comment, got:\n{}", output);
+        // CamelCase sanitization
+        assert!(output.contains("func MyModuleName()"), "expected CamelCase name, got:\n{}", output);
+        assert!(output.contains("Tangle Standard Library"));
+    }
+}
