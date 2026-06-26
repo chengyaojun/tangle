@@ -20,6 +20,7 @@ pub struct Token {
 }
 
 pub struct Lexer<'a> {
+    #[allow(dead_code)]
     source: &'a str,
     file: &'a str,
     chars: Vec<char>,
