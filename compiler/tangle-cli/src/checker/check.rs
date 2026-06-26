@@ -17,6 +17,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             } else if let Some(ref rc) = env.receiver {
                 if let Some(ty) = rc.fields.get(&e.name) {
                     ty.clone()
+                } else if let Some(ty) = env.structs.get(&e.name) {
+                    ty.clone()
                 } else {
                     diags.push(TangleDiagnostic {
                         code: "TANGLE_SYMBOL_NOT_FOUND".into(),

@@ -1,5 +1,5 @@
 use crate::ast::{ParsedCodeBlock, Stmt};
-use crate::model::{TangleDiagnostic, TangleModule};
+use crate::model::{TangleDiagnostic, TangleImport, TangleModule};
 use crate::checker::types::*;
 use crate::checker::env::{ReceiverContext, TypeEnv};
 use crate::checker::errors::ErrorRegistry;
@@ -7,6 +7,7 @@ use crate::checker::resolve::{find_receiver_heading, resolve_types};
 use crate::checker::check::check_expression;
 use crate::parser::lexer::tokenize;
 use crate::parser::parser::parse_code_body;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct CheckedModule {
@@ -45,6 +46,45 @@ fn collect_code_blocks(headings: &[crate::model::TangleHeading], file: &str, out
     }
 }
 
+fn is_stdlib_import(target: &str) -> bool {
+    !target.contains('/') && !target.contains('\\') && !target.starts_with('.')
+}
+
+fn stdlib_ops(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "fmt" => Some(&["print", "println", "input", "debug", "error", "format"]),
+        "IO"  => Some(&["readFile", "writeFile", "exists", "stat", "mkdir", "read_dir", "remove", "rename", "copy", "chmod", "size", "is_dir", "is_file"]),
+        "List" => Some(&["length", "map", "filter", "push", "get"]),
+        "Map"  => Some(&["get", "set", "has", "keys", "values", "delete"]),
+        "Set"  => Some(&["add", "remove", "contains", "size", "union", "intersection", "difference", "to_list"]),
+        "Option" => Some(&["Some", "None", "unwrap", "is_some", "is_none", "map", "or_else"]),
+        "Math" => Some(&["abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow"]),
+        "String" => Some(&["length", "concat", "split", "replace", "to_upper", "to_lower", "trim", "contains"]),
+        "Env"  => Some(&["get", "set", "remove", "args", "current_dir", "exit"]),
+        "Path" => Some(&["join", "basename", "dirname", "extension", "is_absolute", "normalize", "relative", "split"]),
+        _ => None,
+    }
+}
+
+fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
+    for imp in imports {
+        if !is_stdlib_import(&imp.target) { continue; }
+        if let Some(operations) = stdlib_ops(&imp.target) {
+            let methods: HashMap<String, CallableSignature> = operations.iter().map(|op| {
+                (op.to_string(), CallableSignature {
+                    params: vec![],
+                    returns: Type::Primitive(PrimitiveType { name: "String".into() }),
+                })
+            }).collect();
+            env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
+                name: imp.target.clone(),
+                fields: HashMap::new(),
+                methods,
+            }));
+        }
+    }
+}
+
 /// Main type-checking orchestrator
 pub fn check_module(module: TangleModule) -> CheckedModule {
     let mut diagnostics = module.diagnostics.clone();
@@ -57,6 +97,9 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
 
     let mut type_env = base_env;
     type_env.error_registry = Some(error_registry);
+
+    // Resolve stdlib imports: [fmt](fmt) -> inject struct type
+    resolve_stdlib_imports(&module.imports, &mut type_env);
 
     // Type-check each code block
     for block in &parsed_blocks {
