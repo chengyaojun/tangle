@@ -157,3 +157,157 @@ pub fn tokenize(source: &str, file: &str) -> (Vec<Token>, Vec<TangleDiagnostic>)
     let diagnostics = lexer.diagnostics;
     (tokens, diagnostics.to_vec())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tokenize_integer() {
+        let (tokens, _diags) = tokenize("42", "test.md");
+        assert_eq!(tokens.len(), 2); // number + eof
+        assert_eq!(tokens[0].kind, TokenKind::Number);
+        assert_eq!(tokens[0].lexeme, "42");
+    }
+
+    #[test]
+    fn test_tokenize_decimal() {
+        let (tokens, _diags) = tokenize("3.14", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Number);
+        assert_eq!(tokens[0].lexeme, "3.14");
+    }
+
+    #[test]
+    fn test_tokenize_string() {
+        let (tokens, _diags) = tokenize("\"hello\"", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::String);
+        assert_eq!(tokens[0].lexeme, "hello");
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_string() {
+        let (tokens, diags) = tokenize("\"unclosed", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::String);
+        assert_eq!(tokens[0].lexeme, "unclosed");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "TANGLE_UNTERMINATED_STRING");
+        assert_eq!(diags[0].message, "Unterminated string literal");
+    }
+
+    #[test]
+    fn test_tokenize_keywords() {
+        let (tokens, _diags) = tokenize("return let const if else this true false", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Return);
+        assert_eq!(tokens[1].kind, TokenKind::Let);
+        assert_eq!(tokens[2].kind, TokenKind::Const);
+        assert_eq!(tokens[3].kind, TokenKind::If);
+        assert_eq!(tokens[4].kind, TokenKind::Else);
+        assert_eq!(tokens[5].kind, TokenKind::This);
+        assert_eq!(tokens[6].kind, TokenKind::True);
+        assert_eq!(tokens[7].kind, TokenKind::False);
+    }
+
+    #[test]
+    fn test_tokenize_identifiers() {
+        let (tokens, _diags) = tokenize("foo bar123 _private", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Identifier);
+        assert_eq!(tokens[0].lexeme, "foo");
+        assert_eq!(tokens[1].kind, TokenKind::Identifier);
+        assert_eq!(tokens[1].lexeme, "bar123");
+        assert_eq!(tokens[2].kind, TokenKind::Identifier);
+        assert_eq!(tokens[2].lexeme, "_private");
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_operators() {
+        let (tokens, _diags) = tokenize("== != <= >= && || |> => ->", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::EqEq);
+        assert_eq!(tokens[0].lexeme, "==");
+        assert_eq!(tokens[1].kind, TokenKind::Neq);
+        assert_eq!(tokens[1].lexeme, "!=");
+        assert_eq!(tokens[2].kind, TokenKind::Lte);
+        assert_eq!(tokens[2].lexeme, "<=");
+        assert_eq!(tokens[3].kind, TokenKind::Gte);
+        assert_eq!(tokens[3].lexeme, ">=");
+        assert_eq!(tokens[4].kind, TokenKind::And);
+        assert_eq!(tokens[4].lexeme, "&&");
+        assert_eq!(tokens[5].kind, TokenKind::Or);
+        assert_eq!(tokens[5].lexeme, "||");
+        assert_eq!(tokens[6].kind, TokenKind::PipeOp);
+        assert_eq!(tokens[6].lexeme, "|>");
+        assert_eq!(tokens[7].kind, TokenKind::FatArrow);
+        assert_eq!(tokens[7].lexeme, "=>");
+        assert_eq!(tokens[8].kind, TokenKind::Arrow);
+        assert_eq!(tokens[8].lexeme, "->");
+    }
+
+    #[test]
+    fn test_tokenize_single_char_operators_and_delimiters() {
+        let (tokens, _diags) = tokenize("+ - * / . , : ; ( ) { } [ ]", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Plus);
+        assert_eq!(tokens[0].lexeme, "+");
+        assert_eq!(tokens[1].kind, TokenKind::Minus);
+        assert_eq!(tokens[1].lexeme, "-");
+        assert_eq!(tokens[2].kind, TokenKind::Star);
+        assert_eq!(tokens[2].lexeme, "*");
+        assert_eq!(tokens[3].kind, TokenKind::Slash);
+        assert_eq!(tokens[3].lexeme, "/");
+        assert_eq!(tokens[4].kind, TokenKind::Dot);
+        assert_eq!(tokens[4].lexeme, ".");
+        assert_eq!(tokens[5].kind, TokenKind::Comma);
+        assert_eq!(tokens[5].lexeme, ",");
+        assert_eq!(tokens[6].kind, TokenKind::Colon);
+        assert_eq!(tokens[6].lexeme, ":");
+        assert_eq!(tokens[7].kind, TokenKind::Semicolon);
+        assert_eq!(tokens[7].lexeme, ";");
+        assert_eq!(tokens[8].kind, TokenKind::LParen);
+        assert_eq!(tokens[8].lexeme, "(");
+        assert_eq!(tokens[9].kind, TokenKind::RParen);
+        assert_eq!(tokens[9].lexeme, ")");
+        assert_eq!(tokens[10].kind, TokenKind::LBrace);
+        assert_eq!(tokens[10].lexeme, "{");
+        assert_eq!(tokens[11].kind, TokenKind::RBrace);
+        assert_eq!(tokens[11].lexeme, "}");
+        assert_eq!(tokens[12].kind, TokenKind::LBracket);
+        assert_eq!(tokens[12].lexeme, "[");
+        assert_eq!(tokens[13].kind, TokenKind::RBracket);
+        assert_eq!(tokens[13].lexeme, "]");
+    }
+
+    #[test]
+    fn test_tokenize_question_mark() {
+        let (tokens, _diags) = tokenize("?", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Question);
+        assert_eq!(tokens[0].lexeme, "?");
+    }
+
+    #[test]
+    fn test_tokenize_pipe() {
+        let (tokens, _diags) = tokenize("|", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Pipe);
+        assert_eq!(tokens[0].lexeme, "|");
+    }
+
+    #[test]
+    fn test_tokenize_complex_expression() {
+        let (tokens, _diags) = tokenize("return this { is_active: true }", "test.md");
+        let kinds: Vec<TokenKind> = tokens.iter().map(|t| t.kind).collect();
+        assert_eq!(kinds, vec![
+            TokenKind::Return, TokenKind::This, TokenKind::LBrace,
+            TokenKind::Identifier, TokenKind::Colon, TokenKind::True,
+            TokenKind::RBrace, TokenKind::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_token_spans() {
+        let (tokens, _diags) = tokenize("  x\n  42", "test.md");
+        assert_eq!(tokens[0].kind, TokenKind::Identifier);
+        assert_eq!(tokens[0].lexeme, "x");
+        assert_eq!(tokens[0].span.start_line, 1);
+        assert_eq!(tokens[0].span.start_column, 3);
+        assert_eq!(tokens[1].kind, TokenKind::Number);
+        assert_eq!(tokens[1].lexeme, "42");
+        assert_eq!(tokens[1].span.start_line, 2);
+    }
+}
