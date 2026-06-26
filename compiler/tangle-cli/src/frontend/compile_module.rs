@@ -422,4 +422,76 @@ mod tests {
         assert!(graph.nodes.len() >= 2, "Expected >=2 nodes, got {}: {:?}",
             graph.nodes.len(), graph.nodes.iter().map(|n| &n.label).collect::<Vec<_>>());
     }
+
+    #[test]
+    fn test_pipeline_table_to_ir() {
+        let source = std::fs::read_to_string("../../test-cases/rules/decision-table.tangle.md")
+            .expect("Failed to read test file");
+
+        let module = compile_module(CompileModuleInput {
+            file: "decision-table.tangle.md".into(),
+            source,
+        });
+
+        use crate::checker::check_module::check_module;
+        let checked = check_module(module);
+
+        use crate::ir::compile_to_ir::compile_to_ir;
+        let (graph, _diagnostics) = compile_to_ir(&checked);
+
+        assert!(
+            graph.nodes.len() >= 2,
+            "Expected >=2 nodes in decision-table IR, got {}: {:?}",
+            graph.nodes.len(),
+            graph.nodes.iter().map(|n| &n.label).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_pipeline_tree_to_ir() {
+        let source = std::fs::read_to_string("../../test-cases/rules/decision-tree.tangle.md")
+            .expect("Failed to read test file");
+
+        let module = compile_module(CompileModuleInput {
+            file: "decision-tree.tangle.md".into(),
+            source,
+        });
+
+        use crate::checker::check_module::check_module;
+        let checked = check_module(module);
+
+        use crate::ir::compile_to_ir::compile_to_ir;
+        let (graph, _diagnostics) = compile_to_ir(&checked);
+
+        assert!(
+            graph.nodes.len() >= 2,
+            "Expected >=2 nodes in decision-tree IR, got {}: {:?}",
+            graph.nodes.len(),
+            graph.nodes.iter().map(|n| &n.label).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_pipeline_toggle_to_ir() {
+        let source = std::fs::read_to_string("../../test-cases/rules/feature-toggles.tangle.md")
+            .expect("Failed to read test file");
+
+        let module = compile_module(CompileModuleInput {
+            file: "feature-toggles.tangle.md".into(),
+            source,
+        });
+
+        use crate::checker::check_module::check_module;
+        let checked = check_module(module);
+
+        use crate::ir::compile_to_ir::compile_to_ir;
+        let (graph, _diagnostics) = compile_to_ir(&checked);
+
+        assert!(
+            graph.nodes.len() >= 2,
+            "Expected >=2 nodes in feature-toggles IR, got {}: {:?}",
+            graph.nodes.len(),
+            graph.nodes.iter().map(|n| &n.label).collect::<Vec<_>>()
+        );
+    }
 }
