@@ -9,11 +9,18 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
     out.push_str(crate::codegen::js_prelude::RUNTIME_PRELUDE);
     out.push('\n');
 
-    // Stdlib prelude
-    out.push_str(crate::stdlib::bindings::stdlib_prelude(
-        crate::stdlib::bindings::TargetHost::JavaScript
-    ));
-    out.push('\n');
+    // Stdlib prelude — only emit modules that are actually imported
+    if !graph.imported_stdlib.is_empty() {
+        out.push_str("// --- Tangle Standard Library (JS) ---\n");
+        for module in &graph.imported_stdlib {
+            if let Some(prelude) = crate::stdlib::bindings::stdlib_module_prelude(
+                crate::stdlib::bindings::TargetHost::JavaScript, module
+            ) {
+                out.push_str(prelude);
+            }
+        }
+        out.push('\n');
+    }
 
     // Module function
     out.push_str(&format!("function {}() {{\n", module_name));
@@ -127,13 +134,14 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![],
         };
 
         let output = emit_js(&graph, "test_module");
 
         assert!(output.contains("function test_module()"));
         assert!(output.contains("Tangle Runtime Prelude"));
-        assert!(output.contains("Tangle Standard Library"));
+        assert!(!output.contains("Tangle Standard Library"), "no stdlib prelude when no modules imported");
         assert!(output.contains("return Ok(undefined)"));
     }
 
@@ -151,6 +159,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![],
         };
 
         let output = emit_js(&graph, "workflow");
@@ -166,6 +175,7 @@ mod tests {
             edges: vec![],
             error_edges: vec![],
             entry_node_id: "missing".to_string(),
+            imported_stdlib: vec![],
         };
 
         let output = emit_js(&graph, "empty_mod");

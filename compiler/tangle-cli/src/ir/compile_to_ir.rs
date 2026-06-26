@@ -40,7 +40,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         }
     }
 
-    let graph = merged_graph.unwrap_or_else(|| {
+    let mut graph = merged_graph.unwrap_or_else(|| {
         let entry_id = id_gen.next();
         let mut g = create_graph(entry_id.clone());
         g.nodes.push(IRNode {
@@ -49,6 +49,12 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         });
         g
     });
+
+    // Collect stdlib import names (bare-name imports only)
+    graph.imported_stdlib = checked.imports.iter()
+        .filter(|imp| !imp.target.contains('/') && !imp.target.contains('\\') && !imp.target.starts_with('.'))
+        .map(|imp| imp.target.clone())
+        .collect();
 
     let validate_diags = validate_ir(&graph);
     diagnostics.extend(validate_diags);
