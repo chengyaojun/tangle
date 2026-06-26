@@ -1,0 +1,132 @@
+use crate::checker::env::TypeEnv;
+use crate::checker::types::*;
+use crate::model::{HeadingRole, TangleDiagnostic, TangleHeading, TangleModule};
+use std::collections::HashMap;
+
+pub fn resolve_types(module: &TangleModule) -> (TypeEnv, Vec<TangleDiagnostic>) {
+    let diagnostics = vec![];
+    let mut env = TypeEnv::new();
+
+    // Pass 1: Collect type headings (depth 3)
+    for heading in &module.headings {
+        if heading.role == HeadingRole::Type {
+            let name = heading
+                .symbol_name
+                .clone()
+                .unwrap_or_else(|| heading.title.clone());
+            let is_interface = heading.title.contains("接口") || heading.title.contains("interface");
+
+            if is_interface {
+                let methods = collect_method_sigs(&heading.children);
+                env.interfaces.insert(
+                    name.clone(),
+                    Type::Interface(InterfaceType { name, methods }),
+                );
+            } else {
+                let fields: HashMap<String, Type> = heading
+                    .params
+                    .iter()
+                    .map(|p| {
+                        let ty = p
+                            .type_name
+                            .as_ref()
+                            .and_then(|tn| type_name_to_type(tn))
+                            .unwrap_or(Type::Primitive(PrimitiveType {
+                                name: "String".into(),
+                            }));
+                        (p.name.clone(), ty)
+                    })
+                    .collect();
+
+                let methods = collect_method_sigs(&heading.children);
+
+                env.structs.insert(
+                    name.clone(),
+                    Type::Struct(StructType {
+                        name,
+                        fields,
+                        methods,
+                    }),
+                );
+            }
+        }
+    }
+
+    (env, diagnostics)
+}
+
+fn collect_method_sigs(children: &[TangleHeading]) -> HashMap<String, CallableSignature> {
+    let mut methods = HashMap::new();
+    for child in children {
+        if child.role == HeadingRole::Callable {
+            if let Some(ref name) = child.symbol_name {
+                let params: Vec<(String, Type)> = child
+                    .params
+                    .iter()
+                    .map(|p| {
+                        let ty = p
+                            .type_name
+                            .as_ref()
+                            .and_then(|tn| type_name_to_type(tn))
+                            .unwrap_or(Type::Primitive(PrimitiveType {
+                                name: "String".into(),
+                            }));
+                        (p.name.clone(), ty)
+                    })
+                    .collect();
+                methods.insert(
+                    name.clone(),
+                    CallableSignature {
+                        params,
+                        returns: Type::Primitive(PrimitiveType {
+                            name: "Bool".into(),
+                        }),
+                    },
+                );
+            }
+        }
+    }
+    methods
+}
+
+fn type_name_to_type(name: &str) -> Option<Type> {
+    match name {
+        "String" => Some(Type::Primitive(PrimitiveType {
+            name: "String".into(),
+        })),
+        "Int" => Some(Type::Primitive(PrimitiveType {
+            name: "Int".into(),
+        })),
+        "Bool" => Some(Type::Primitive(PrimitiveType {
+            name: "Bool".into(),
+        })),
+        _ => Some(Type::Primitive(PrimitiveType {
+            name: name.into(),
+        })),
+    }
+}
+
+/// Find parent type heading for a given heading id (implicit this binding)
+pub fn find_receiver_heading<'a>(
+    heading_id: &str,
+    headings: &'a [TangleHeading],
+) -> Option<&'a TangleHeading> {
+    find_receiver_recursive(heading_id, headings)
+}
+
+fn find_receiver_recursive<'a>(
+    target_id: &str,
+    headings: &'a [TangleHeading],
+) -> Option<&'a TangleHeading> {
+    for h in headings {
+        if h.role == HeadingRole::Type {
+            if h.children.iter().any(|c| c.id == target_id) {
+                return Some(h);
+            }
+        }
+        if let Some(found) = find_receiver_recursive(target_id, &h.children) {
+            return Some(found);
+        }
+    }
+    None
+}
