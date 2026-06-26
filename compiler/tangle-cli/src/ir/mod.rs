@@ -4,6 +4,7 @@ pub mod lower_rule_flow;
 pub mod lower_rule_table;
 pub mod lower_rule_tree;
 pub mod lower_rule_toggle;
+pub mod cache;
 pub mod compile_to_ir;
 pub mod validate;
 pub mod visibility;

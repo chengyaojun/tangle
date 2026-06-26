@@ -25,6 +25,14 @@ enum Command {
         #[arg(long)]
         filter: Option<String>,
     },
+    /// Start LSP server (stdio)
+    Lsp,
+    /// Generate documentation HTML
+    Doc {
+        file: String,
+        #[arg(long)]
+        output: Option<String>,
+    },
 }
 
 fn main() {
@@ -34,5 +42,26 @@ fn main() {
             cli::run::execute(cli::run::RunOptions { file, emit_ir, target });
         }
         Command::Test { filter } => cli::test::execute(filter.as_deref()),
+        Command::Lsp => {
+            let mut server = tangle_cli::lsp::LspServer::new();
+            if let Err(e) = server.run() {
+                eprintln!("LSP error: {}", e);
+            }
+        }
+        Command::Doc { file, output } => {
+            use tangle_cli::frontend::compile_module::{compile_module, CompileModuleInput};
+            let source = std::fs::read_to_string(&file).unwrap_or_default();
+            let module = compile_module(CompileModuleInput {
+                file: file.clone(),
+                source,
+            });
+            let html = tangle_cli::docgen::generate_doc_html(&module, &file);
+            if let Some(out) = output {
+                let _ = std::fs::write(&out, html);
+                println!("Documentation written to {}", out);
+            } else {
+                println!("{}", html);
+            }
+        }
     }
 }
