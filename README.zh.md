@@ -126,6 +126,7 @@ cargo run -- run tests/basic/hello.tangle.md --target go
 cargo run -- build tests/basic/hello.tangle.md
 cargo run -- build tests/basic/hello.tangle.md --emit-ir
 cargo run -- build tests/basic/hello.tangle.md --incremental
+cargo run -- run tests/basic/hello.tangle.md --interp
 
 # 测试
 cargo test -p tangle-cli        # 81 个测试
@@ -180,12 +181,14 @@ tangle run <file.md>                           # 编译为 JS 并执行
 tangle run <file.md> --target py               # 编译为 Python 并执行
 tangle run <file.md> --target go               # 编译为 Go 并执行
 tangle run <file.md> --incremental             # 增量编译
+tangle run <file.md> --interp                  # 原生 IR 解释器执行（无需外部宿主）
 ```
 
 | 标志 | 说明 |
 |------|------|
 | `--target <js\|py\|go>` | 目标语言（默认 `js`） |
 | `--incremental` | 启用增量编译，缓存到 `.cache/` |
+| `--interp` | 通过原生 Rust IR 解释器执行（零外部宿主依赖） |
 
 ### `tangle build` — 仅编译（输出源码）
 
@@ -257,10 +260,14 @@ tangle lsp                                     # stdio LSP 服务器
 - 源码直译 codegen（AST → 真实代码，替代注释占位）
 - 按模块 stdlib 预绑（只 emit 实际导入的模块）
 
-**后续方向：**
-- Checker stdlib 函数签名细化
-- 规则形式 lowering 完善（AND/OR 语义、优先级）
-- AST 类型化 codegen 翻译
+**B5 后 v0.3.0 演进路径 — 四阶段收紧与独立执行：**
+
+| 阶段 | 聚焦 | 要点 |
+|------|------|------|
+| 一 — Stdlib 签名 | Checker stdlib 函数签名细化 | 每个 stdlib 函数精确 `CallableSignature { params, returns }`；消除 `TANGLE_TYPE_ERROR` 误报 |
+| 二 — 规则 Lowering | 规则形式 lowering 完善 | 嵌套列表 AND/OR 结合律；表格行级优先级拓扑排序 + 重叠检测；Mermaid 图/子图解构增强 |
+| 三 — 类型化 Codegen | AST 类型化 codegen 翻译 | 重构 `src/codegen/` 接收标准 Tangle AST；静态分析 Tree-shaking；按模块宿主预绑（如 `fmt.println` → `console.log`） |
+| 四 — IR 解释器 | 原生 IR 树行走解释器 **（核心跃迁）** | `tangle-cli` 内部纯 Rust 执行，由 Rule Graph IR 驱动；通用图遍历求值算法；`tangle run --interp` 实验性标志；`?` 错误传播差分压测 |
 
 ### 🔮 2.0 — 自举 (v1.0.0)
 

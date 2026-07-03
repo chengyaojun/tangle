@@ -127,6 +127,7 @@ cargo run -- run tests/basic/hello.tangle.md --target py
 cargo run -- run tests/basic/hello.tangle.md --target go
 cargo run -- run tests/basic/hello.tangle.md --emit-ir
 cargo run -- run tests/basic/hello.tangle.md --incremental
+cargo run -- run tests/basic/hello.tangle.md --interp
 
 # Test
 cargo test -p tangle-cli        # 81 tests
@@ -181,12 +182,14 @@ tangle run <file.md>                           # Compile to JS and run
 tangle run <file.md> --target py               # Compile to Python and run
 tangle run <file.md> --target go               # Compile to Go and run
 tangle run <file.md> --incremental             # Skip unchanged files
+tangle run <file.md> --interp                  # Run via native IR interpreter (no host)
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--target <js\|py\|go>` | Target language (default `js`) |
 | `--incremental` | Enable incremental compilation, cached in `.cache/` |
+| `--interp` | Execute via native Rust IR interpreter (no external host dependency) |
 
 ### `tangle build` — Compile only (output source)
 
@@ -258,10 +261,14 @@ JS/TS codegen only. Semantic validation + business MVP.
 - Source-text codegen (AST → real code, not comments)
 - Per-module stdlib prelude (only emit what's imported)
 
-**Next steps:**
-- Checker stdlib function signature refinement
-- Rule form lowering completeness (AND/OR semantics, priority)
-- AST-based typed codegen translation
+**Post-B5 v0.3.0 development path — four phases of tightening & independent execution:**
+
+| Phase | Focus | Highlights |
+|-------|-------|------------|
+| 1 — Stdlib Signatures | Checker stdlib function signature refinement | Precise `CallableSignature { params, returns }` per function; eliminate `TANGLE_TYPE_ERROR` false positives |
+| 2 — Rule Lowering | Rule form lowering completeness | Nested-list AND/OR with associativity; table row-priority sort + overlap detection; Mermaid graph/subgraph destructuring |
+| 3 — Typed Codegen | AST-based typed codegen translation | Refactor `src/codegen/` to consume standard Tangle AST; tree-shaking via static analysis; per-module host preludes (e.g. `fmt.println` → `console.log`) |
+| 4 — IR Interpreter | Native IR tree-walking interpreter **(core leap)** | Pure Rust execution inside `tangle-cli` driven by Rule Graph IR; general graph-traversal evaluator; `tangle run --interp` experimental flag; differential testing of `?` error-propagation |
 
 ### 🔮 2.0 — Self-Hosting (v1.0.0)
 

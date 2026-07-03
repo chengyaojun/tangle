@@ -535,23 +535,36 @@ return receipt
 
 ### Track B 后续增强
 
-以下功能在 Track B 骨架中已部分实现，需后续完善：
+以下功能在 Track B 骨架中已部分实现，作为当前阶段最核心的收紧与独立执行演进路径：
 
-**1. Checker stdlib 函数签名细化**
-- 当前状态：所有 stdlib 函数返回类型统一为 `String`，参数列表为空
-- 目标：每个 stdlib 函数的精确签名（参数类型、返回类型）
-- 影响：消除 `TANGLE_TYPE_ERROR` 误报（如 `print()` 是 void 函数，不应参与二元运算类型检查）
-- 实现要点：在 `stdlib_ops()` 中为每个函数标注精确的 `CallableSignature { params: [(name, Type)], returns: Type }`
+**1. Checker stdlib 函数签名细化（阶段一）**
 
-**2. 规则形式 lowering 完善**
-- 当前状态：四种规则形式（flow/table/tree/toggle）已实现基本解析
-- tree 规则应支持缩进层级 AND/OR 语义
-- table 规则应支持优先级排序和重叠条件检测
-- flow 规则应支持 Mermaid 子图
+* **当前状态**：所有 stdlib 函数返回类型统一为 String，参数列表为空。  
+* **目标**：每个 stdlib 函数的精确签名（参数类型、返回类型）。  
+* **影响**：消除 TANGLE_TYPE_ERROR 误报（如 print() 是 void 函数，不应参与二元运算类型检查）。  
+* **实现要点**：在 stdlib_ops() 中为每个函数标注精确的 CallableSignature { params: [(name, Type)], returns: Type }。
 
-**3. Codegen AST 翻译**
-- 当前状态：源码直译模式（提取源文本直接 emit）
-- 目标：基于 AST 的类型化翻译（如 `fmt.println(...)` 在 JS 中翻译为 `console.log(...)`）
+**2. 规则形式 lowering 完善（阶段二）**
+
+* **当前状态**：四种规则形式（flow/table/tree/toggle）已实现基本解析。  
+* **实现要点**：  
+  * Rule： 嵌套列表（原 tree 规则）完善中端解析，严格支持缩进层级的 AND/OR 语义结合律。  
+  * Rule： 表格（原 table 规则）引入自上而下的行级优先级拓扑排序，并追加重叠条件与冲突检测。  
+  * Rule： Mermaid 图（原 flow 规则）增强对 graph/subgraph 嵌套解构的支持，确保图算子下沉时携带严格的 SourceSpan。
+
+**3. Codegen AST 翻译（阶段三）**
+
+* **当前状态**：源码直译模式（提取源文本直接 emit）。  
+* **目标**：基于 AST 的类型化翻译（如 fmt.println(...) 在 JS 中翻译为 console.log(...)）。  
+* **实现要点**：重构 src/codegen/ 使其完全接收标准 Tangle AST，引入依赖静态分析实现 Tree-shaking 机制，为每个模块生成纯净的宿主 Prelude 预导产物。
+
+**4. 独立原生运行：IR Interpreter 解释器（阶段四 —— 核心跃迁）**
+
+* **目标**：完全脱离对外部宿主（Node.js / Python / Go）编译环境的依赖，实现就地纯 Rust 驱动执行。  
+* **实现要点**：  
+  * 在 tangle-cli 内部直接构建基于标准 Rule Graph IR 的树行走解释器（Tree-Walking Interpreter）。  
+  * 通过通用的图遍历求值算法直接驱动 Nodes 与 Edges 的控制流与状态转移。  
+  * 提供 tangle run --interp 实验性 Flag，利用无数据纯控制流断言文档，对 Error： 状态通过 ? 运算符在调用栈中的提前退出行为进行闭环验证与差分压测（Differential Testing）。
 
 ### 远期：Tangle 自举
 
