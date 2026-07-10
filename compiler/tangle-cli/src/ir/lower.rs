@@ -1,7 +1,7 @@
 use crate::ast::Stmt;
 use crate::ir::graph::*;
 
-fn stmt_source(stmt: &Stmt, source: &str) -> String {
+pub(crate) fn stmt_source(stmt: &Stmt, source: &str) -> String {
     let span = match stmt {
         Stmt::Return(s) => &s.span,
         Stmt::Let(s) => &s.span,

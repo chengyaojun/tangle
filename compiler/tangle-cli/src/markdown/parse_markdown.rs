@@ -134,11 +134,21 @@ pub fn parse_markdown(source: &str, _file: &str) -> Vec<MarkdownNode> {
                     _ => {}
                 }
             }
-            Event::Text(text) | Event::Code(text) => {
+            Event::Text(text) => {
                 if current_position.is_none() {
                     current_position = Some(offset_to_position(source, start, end));
                 }
                 current_text.push_str(&text);
+            }
+            Event::Code(text) => {
+                if current_position.is_none() {
+                    current_position = Some(offset_to_position(source, start, end));
+                }
+                // Preserve inline-code markup so consumers (e.g. param parsing)
+                // can distinguish `name` from prose text.
+                current_text.push('`');
+                current_text.push_str(&text);
+                current_text.push('`');
             }
             Event::InlineHtml(html) | Event::Html(html) => { current_text.push_str(&html); }
             Event::SoftBreak | Event::HardBreak => { current_text.push(' '); }

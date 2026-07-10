@@ -132,7 +132,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
 
         let output = emit_python(&graph, "test_module");
@@ -159,7 +159,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
 
         let output = emit_python(&graph, "workflow");
@@ -176,7 +176,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
         let output2 = emit_python(&graph2, "my.module_name");
         assert!(output2.contains("def my_module_name()"), "special chars should be sanitized");

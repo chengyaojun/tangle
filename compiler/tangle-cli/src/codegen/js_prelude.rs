@@ -5,6 +5,7 @@ function __tangle_update(obj, updates) { return Object.freeze(Object.assign({}, 
 function Ok(value) { return { ok: true, value: value }; }
 function Err(variant, value) { return { ok: false, error: variant, value: value }; }
 function __tangle_propagate(result) { if (!result.ok) return result; return result.value; }
+function __unwrap(result) { if (!result.ok) throw result; return result.value; }
 function __tangle_match(value, patterns) {
     for (const [pattern, handler] of patterns) {
         if (pattern === '_' || pattern === value.error) return handler(value);

@@ -1,7 +1,176 @@
 use crate::ir::graph::*;
 use std::collections::{HashSet, VecDeque};
 
+fn sanitize_module_name(name: &str) -> String {
+    name.replace(['.', '-'], "_")
+}
+
+/// Translate a Tangle source statement into JS satisfying the Result runtime protocol.
+/// Bare `return X` becomes `return Ok(X)`; already-wrapped `Ok(...)`/`Err(...)` is left as-is.
+/// Struct construction `Type { ... }` / `this { ... }` becomes `{ ... }`;
+/// record update `var { ... }` becomes `{ ...var, ... }`.
+/// Propagation `expr?` becomes `__unwrap(expr)`.
+fn translate_stmt_to_js(src: &str) -> String {
+    let trimmed = src.trim();
+    if trimmed == "return" {
+        return "return Ok(undefined)".to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix("return ") {
+        let expr = rest.trim();
+        if expr.is_empty() {
+            return "return Ok(undefined)".to_string();
+        }
+        let translated = translate_propagation(&translate_struct_literals(expr));
+        if translated.starts_with("Ok(") || translated.starts_with("Err(") {
+            return format!("return {}", translated);
+        }
+        return format!("return Ok({})", translated);
+    }
+    translate_propagation(&translate_struct_literals(trimmed))
+}
+
+/// Rewrite Tangle propagation `expr?` into `__unwrap(expr)`.
+/// Scans for `?` outside string literals and wraps the immediately preceding atom.
+fn translate_propagation(src: &str) -> String {
+    let chars: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' || c == '\'' {
+            let quote = c;
+            out.push(c);
+            i += 1;
+            while i < chars.len() && chars[i] != quote {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    out.push(chars[i]);
+                    out.push(chars[i + 1]);
+                    i += 2;
+                } else {
+                    out.push(chars[i]);
+                    i += 1;
+                }
+            }
+            if i < chars.len() {
+                out.push(chars[i]);
+                i += 1;
+            }
+            continue;
+        }
+        if c == '?' {
+            let atom_start = find_atom_start(&out);
+            let atom = out[atom_start..].to_string();
+            out.truncate(atom_start);
+            out.push_str("__unwrap(");
+            out.push_str(&atom);
+            out.push(')');
+            i += 1;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
+/// Find the byte offset where the expression atom immediately preceding the end of `s` starts.
+/// An atom is a balanced bracket group optionally prefixed by identifier chars and `.` (member access).
+fn find_atom_start(s: &str) -> usize {
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut i = chars.len();
+    while i > 0 && chars[i - 1].1.is_whitespace() {
+        i -= 1;
+    }
+    while i > 0 {
+        let c = chars[i - 1].1;
+        if c == ')' || c == ']' || c == '}' {
+            let open = match c { ')' => '(', ']' => '[', '}' => '{', _ => unreachable!() };
+            let mut depth = 1;
+            i -= 1;
+            while i > 0 && depth > 0 {
+                i -= 1;
+                if chars[i].1 == c { depth += 1; }
+                else if chars[i].1 == open { depth -= 1; }
+            }
+        } else if c.is_alphanumeric() || c == '_' || c == '.' {
+            i -= 1;
+        } else {
+            break;
+        }
+    }
+    if i < chars.len() { chars[i].0 } else { 0 }
+}
+
+/// Rewrite Tangle struct-literal syntax into JS object literals.
+/// `Identifier {` directly followed by `{` is treated as a struct:
+///  - `this`/Capitalized → construction, drop the name: `Order { a: 1 }` → `{ a: 1 }`
+///  - lowercase (non-keyword) → record update, spread: `order { a: 1 }` → `{ ...order, a: 1 }`
+fn translate_struct_literals(src: &str) -> String {
+    let chars: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_alphabetic() || chars[i] == '_' {
+            let start = i;
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            let ident: String = chars[start..i].iter().collect();
+            let mut j = i;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < chars.len() && chars[j] == '{' && !is_block_keyword(&ident) {
+                if ident == "this" || ident.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    out.push('{');
+                    i = j + 1;
+                    continue;
+                } else {
+                    out.push_str("{ ...");
+                    out.push_str(&ident);
+                    out.push(',');
+                    i = j + 1;
+                    continue;
+                }
+            }
+            out.push_str(&ident);
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn is_block_keyword(ident: &str) -> bool {
+    matches!(ident, "else" | "try" | "finally" | "do")
+}
+
+/// True if `?` appears outside a string literal (i.e. as a propagation operator).
+fn statement_uses_propagation(s: &str) -> bool {
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '"' || c == '\'' {
+            let quote = c;
+            i += 1;
+            while i < chars.len() && chars[i] != quote {
+                if chars[i] == '\\' && i + 1 < chars.len() { i += 2; }
+                else { i += 1; }
+            }
+            if i < chars.len() { i += 1; }
+        } else if c == '?' {
+            return true;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
 pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
+    let module_name = sanitize_module_name(module_name);
     let mut out = String::new();
 
     // Runtime prelude
@@ -33,15 +202,30 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
         out.push('\n');
     }
 
-    // Module function
-    out.push_str(&format!("function {}() {{\n", module_name));
+    if !graph.functions.is_empty() {
+        out.push_str(&emit_multi_function_js(&graph.functions));
+    } else {
+        out.push_str(&emit_single_function_js(&graph.nodes, &graph.edges, &graph.entry_node_id, &module_name));
+    }
 
-    // BFS traversal from entry node
+    out
+}
+
+/// Emit the body of one function (BFS traversal + Result protocol), wrapped in
+/// try/catch when any statement uses the `?` propagation operator. Returns the
+/// indented body lines WITHOUT the surrounding `function ... { }`.
+fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str) -> String {
+    let uses_propagation = nodes.iter().any(|n| {
+        n.source_text.as_ref().map_or(false, |s| statement_uses_propagation(s))
+    });
+    let mut out = String::new();
+    if uses_propagation {
+        out.push_str("  try {\n");
+    }
+
     let mut visited: HashSet<&str> = HashSet::new();
     let mut queue: VecDeque<&IRNode> = VecDeque::new();
-
-    // Find entry node
-    if let Some(entry) = graph.nodes.iter().find(|n| n.id == graph.entry_node_id) {
+    if let Some(entry) = nodes.iter().find(|n| n.id == entry_node_id) {
         queue.push_back(entry);
     }
 
@@ -54,7 +238,7 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
                 if let Some(ref src) = node.source_text {
-                    out.push_str(&format!("  {};\n", src));
+                    out.push_str(&format!("  {};\n", translate_stmt_to_js(src)));
                 } else {
                     out.push_str(&format!("  // {}: {}\n",
                         match node.kind {
@@ -76,24 +260,80 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
             }
         }
 
-        // Follow edges
-        for edge in &graph.edges {
+        for edge in edges {
             if edge.from == node.id {
-                if let Some(target) = graph.nodes.iter().find(|n| n.id == edge.to) {
+                if let Some(target) = nodes.iter().find(|n| n.id == edge.to) {
                     queue.push_back(target);
                 }
             }
         }
     }
 
-    out.push_str("}\n\n");
+    // Guarantee the function always returns a Result (rule graphs may have no Terminal node)
+    out.push_str("  return Ok(undefined);\n");
+    if uses_propagation {
+        out.push_str("  } catch (e) { if (e && e.ok === false) return e; throw e; }\n");
+    }
+    out
+}
 
-    // Entry point invocation
+/// Single-function fallback: one `module_name()` wrapper + entry invocation.
+fn emit_single_function_js(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str, module_name: &str) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("function {}() {{\n", module_name));
+    out.push_str(&emit_js_function_body(nodes, edges, entry_node_id));
+    out.push_str("}\n\n");
     out.push_str(&format!(
         "// Entry point\nconst __result = {module_name}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nif (__result.value !== undefined) {{ console.log(__result.value); }}\n",
         module_name = module_name
     ));
+    out
+}
 
+/// Multi-function emission: one JS function per heading-defined callable, with
+/// params as arguments. Methods (`receiver = Some`) attach to a receiver object
+/// (e.g. `Order.create = function(...)`); free functions are plain declarations.
+/// The entry point is the function named `main`.
+fn emit_multi_function_js(functions: &[IRFunction]) -> String {
+    let mut out = String::new();
+
+    // Declare receiver objects for methods (e.g. `const Order = {};`)
+    let mut receivers: Vec<&str> = vec![];
+    for f in functions {
+        if let Some(r) = &f.receiver {
+            if !receivers.contains(&r.as_str()) {
+                receivers.push(r.as_str());
+            }
+        }
+    }
+    for r in &receivers {
+        out.push_str(&format!("const {} = {{}};\n", r));
+    }
+    if !receivers.is_empty() {
+        out.push('\n');
+    }
+
+    for f in functions {
+        let params = f.params.join(", ");
+        match &f.receiver {
+            Some(r) => out.push_str(&format!("{}.{} = function({}) {{\n", r, f.name, params)),
+            None => out.push_str(&format!("function {}({}) {{\n", f.name, params)),
+        }
+        out.push_str(&emit_js_function_body(&f.nodes, &f.edges, &f.entry_node_id));
+        match &f.receiver {
+            Some(_) => out.push_str("};\n\n"),
+            None => out.push_str("}\n\n"),
+        }
+    }
+
+    // Entry point: call `main()` (the Callable heading named "main").
+    let entry_name = functions.iter().find(|f| f.name == "main")
+        .map(|f| f.name.as_str())
+        .unwrap_or_else(|| functions.first().map(|f| f.name.as_str()).unwrap_or("main"));
+    out.push_str(&format!(
+        "// Entry point\nconst __result = {entry}();\nif (!__result.ok) {{ console.error('Error:', __result.error); process.exit(1); }}\nif (__result.value !== undefined) {{ console.log(__result.value); }}\n",
+        entry = entry_name
+    ));
     out
 }
 
@@ -148,7 +388,7 @@ mod tests {
             edges: vec![make_edge("n0", "n1")],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
 
         let output = emit_js(&graph, "test_module");
@@ -173,7 +413,7 @@ mod tests {
             ],
             error_edges: vec![],
             entry_node_id: "n0".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
 
         let output = emit_js(&graph, "workflow");
@@ -189,7 +429,7 @@ mod tests {
             edges: vec![],
             error_edges: vec![],
             entry_node_id: "missing".to_string(),
-            imported_stdlib: vec![], stdlib_imports: vec![],
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
         };
 
         let output = emit_js(&graph, "empty_mod");
@@ -197,5 +437,168 @@ mod tests {
         assert!(!output.is_empty(), "output should not be empty");
         assert!(output.contains("Tangle Runtime Prelude"), "output should contain prelude");
         assert!(output.contains("function empty_mod()"), "output should contain function definition");
+    }
+
+    #[test]
+    fn emit_graph_sanitizes_module_name_with_special_chars() {
+        let graph = RuleGraph {
+            nodes: vec![
+                make_entry_node("n0"),
+                make_terminal_node("n1"),
+            ],
+            edges: vec![make_edge("n0", "n1")],
+            error_edges: vec![],
+            entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
+        };
+
+        let output = emit_js(&graph, "io-system.tangle");
+
+        assert!(output.contains("function io_system_tangle()"), "module name should be sanitized, got:\n{}", output);
+        assert!(output.contains("const __result = io_system_tangle();"), "entry invocation should use sanitized name, got:\n{}", output);
+    }
+
+    #[test]
+    fn translate_wraps_bare_return_value_in_ok() {
+        assert_eq!(translate_stmt_to_js("return \"hello\""), "return Ok(\"hello\")");
+        assert_eq!(translate_stmt_to_js("return a"), "return Ok(a)");
+        assert_eq!(translate_stmt_to_js("return x + 1"), "return Ok(x + 1)");
+    }
+
+    #[test]
+    fn translate_bare_return_becomes_ok_undefined() {
+        assert_eq!(translate_stmt_to_js("return"), "return Ok(undefined)");
+        assert_eq!(translate_stmt_to_js("return "), "return Ok(undefined)");
+    }
+
+    #[test]
+    fn translate_leaves_already_wrapped_returns() {
+        assert_eq!(translate_stmt_to_js("return Ok(x)"), "return Ok(x)");
+        assert_eq!(translate_stmt_to_js("return Err(\"fail\")"), "return Err(\"fail\")");
+    }
+
+    #[test]
+    fn translate_passes_through_non_return_statements() {
+        assert_eq!(translate_stmt_to_js("let x = 42"), "let x = 42");
+        assert_eq!(translate_stmt_to_js("fmt.println(\"hi\")"), "fmt.println(\"hi\")");
+    }
+
+    #[test]
+    fn translate_struct_construction_drops_type_name() {
+        assert_eq!(
+            translate_stmt_to_js("return Order { id: id, status: \"created\" }"),
+            "return Ok({ id: id, status: \"created\" })"
+        );
+    }
+
+    #[test]
+    fn translate_this_struct_construction() {
+        assert_eq!(
+            translate_stmt_to_js("return this { id: 1, name: \"active\" }"),
+            "return Ok({ id: 1, name: \"active\" })"
+        );
+    }
+
+    #[test]
+    fn translate_record_update_becomes_spread() {
+        assert_eq!(
+            translate_stmt_to_js("return Ok(order { status: \"paid\" })"),
+            "return Ok({ ...order, status: \"paid\" })"
+        );
+        assert_eq!(
+            translate_stmt_to_js("return order { status: \"confirmed\" }"),
+            "return Ok({ ...order, status: \"confirmed\" })"
+        );
+    }
+
+    #[test]
+    fn translate_leaves_block_keywords_before_brace() {
+        assert_eq!(translate_struct_literals("else { x }"), "else { x }");
+        assert_eq!(translate_struct_literals("try { x }"), "try { x }");
+        assert_eq!(translate_struct_literals("if (c) { x }"), "if (c) { x }");
+    }
+
+    #[test]
+    fn translate_propagation_wraps_call() {
+        assert_eq!(translate_propagation("process()"), "process()");
+        assert_eq!(translate_propagation("process()?"), "__unwrap(process())");
+        assert_eq!(
+            translate_propagation("Err(\"PayFailed\", \"Invalid amount\")?"),
+            "__unwrap(Err(\"PayFailed\", \"Invalid amount\"))"
+        );
+        assert_eq!(
+            translate_propagation("Order.create(\"ord-1\", 100)?"),
+            "__unwrap(Order.create(\"ord-1\", 100))"
+        );
+    }
+
+    #[test]
+    fn translate_propagation_in_assignment() {
+        assert_eq!(
+            translate_stmt_to_js("result = process()?"),
+            "result = __unwrap(process())"
+        );
+    }
+
+    #[test]
+    fn translate_propagation_ignores_question_in_strings() {
+        assert_eq!(translate_propagation("println(\"is it? yes\")"), "println(\"is it? yes\")");
+        assert!(!statement_uses_propagation("println(\"is it? yes\")"));
+        assert!(statement_uses_propagation("x = f()?"));
+    }
+
+    fn make_return_node(id: &str, src: &str) -> IRNode {
+        IRNode {
+            id: id.to_string(),
+            kind: IRNodeKind::Action,
+            label: "return".to_string(),
+            source_span: None, source_text: Some(src.to_string()),
+        }
+    }
+
+    #[test]
+    fn emit_wraps_return_source_in_ok() {
+        let graph = RuleGraph {
+            nodes: vec![
+                make_return_node("n0", "return \"done\""),
+                make_terminal_node("n1"),
+            ],
+            edges: vec![make_edge("n0", "n1")],
+            error_edges: vec![],
+            entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
+        };
+
+        let output = emit_js(&graph, "mod");
+
+        assert!(output.contains("return Ok(\"done\");"), "bare return should be wrapped in Ok, got:\n{}", output);
+    }
+
+    #[test]
+    fn emit_rule_graph_without_terminal_still_returns_result() {
+        // Mimics a rule graph: compute nodes with no source_text, no Terminal node
+        let graph = RuleGraph {
+            nodes: vec![
+                IRNode {
+                    id: "n0".to_string(), kind: IRNodeKind::Compute,
+                    label: "toggle.entry".to_string(),
+                    source_span: None, source_text: None,
+                },
+                IRNode {
+                    id: "n1".to_string(), kind: IRNodeKind::Compute,
+                    label: "flag = true".to_string(),
+                    source_span: None, source_text: None,
+                },
+            ],
+            edges: vec![make_edge("n0", "n1")],
+            error_edges: vec![],
+            entry_node_id: "n0".to_string(),
+            imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
+        };
+
+        let output = emit_js(&graph, "toggles");
+
+        assert!(output.contains("return Ok(undefined);"), "rule graph must end with a Result return, got:\n{}", output);
+        assert!(output.contains("const __result = toggles();"), "entry invocation should be present, got:\n{}", output);
     }
 }
