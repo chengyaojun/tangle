@@ -8,6 +8,10 @@ description = "Tangle compiler - Rust authority implementation"
 name = "tangle"
 path = "src/main.rs"
 
+[[test]]
+name = "G1_struct_symbol_resolution"
+path = "tests/audit_regression/G1_struct_symbol_resolution.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
