@@ -19,6 +19,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                     ty.clone()
                 } else if let Some(ty) = env.structs.get(&e.name) {
                     ty.clone()
+                } else if let Some(ft) = env.functions.get(&e.name) {
+                    Type::Function(ft.clone())
                 } else {
                     diags.push(TangleDiagnostic {
                         code: "TANGLE_SYMBOL_NOT_FOUND".into(),
@@ -29,6 +31,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                 }
             } else if let Some(ty) = env.structs.get(&e.name) {
                 ty.clone()
+            } else if let Some(ft) = env.functions.get(&e.name) {
+                Type::Function(ft.clone())
             } else {
                 diags.push(TangleDiagnostic {
                     code: "TANGLE_SYMBOL_NOT_FOUND".into(),

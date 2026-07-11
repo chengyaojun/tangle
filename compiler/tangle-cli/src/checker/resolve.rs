@@ -7,6 +7,35 @@ pub fn resolve_types(module: &TangleModule) -> (TypeEnv, Vec<TangleDiagnostic>) 
     let diagnostics = vec![];
     let mut env = TypeEnv::new();
     collect_types_recursive(&module.headings, &mut env);
+
+    // Pass 2: Collect top-level Callables (not children of any Type heading)
+    for heading in flatten_headings(&module.headings) {
+        if heading.role == HeadingRole::Callable
+            && !is_child_of_type_heading(&heading.id, &module.headings)
+        {
+            if let Some(ref name) = heading.symbol_name {
+                let params: Vec<Type> = heading
+                    .params
+                    .iter()
+                    .map(|p| {
+                        p.type_name
+                            .as_ref()
+                            .and_then(|tn| type_name_to_type(tn))
+                            .unwrap_or(Type::Any)
+                    })
+                    .collect();
+                env.functions.insert(
+                    name.clone(),
+                    FunctionType {
+                        params,
+                        returns: Box::new(Type::Any),
+                        is_variadic: false,
+                    },
+                );
+            }
+        }
+    }
+
     (env, diagnostics)
 }
 
@@ -82,9 +111,7 @@ fn collect_method_sigs(children: &[TangleHeading]) -> HashMap<String, CallableSi
                     name.clone(),
                     CallableSignature {
                         params,
-                        returns: Type::Primitive(PrimitiveType {
-                            name: "Bool".into(),
-                        }),
+                        returns: Type::Any,
                         is_variadic: false,
                     },
                 );
@@ -132,4 +159,29 @@ fn find_receiver_recursive<'a>(
         }
     }
     None
+}
+
+/// Flatten the heading tree into a flat list (depth-first).
+fn flatten_headings(headings: &[TangleHeading]) -> Vec<&TangleHeading> {
+    let mut result = vec![];
+    for h in headings {
+        result.push(h);
+        result.extend(flatten_headings(&h.children));
+    }
+    result
+}
+
+/// Check if a heading (by id) is a direct child of a Type heading.
+fn is_child_of_type_heading(heading_id: &str, headings: &[TangleHeading]) -> bool {
+    for h in headings {
+        if h.role == HeadingRole::Type {
+            if h.children.iter().any(|c| c.id == heading_id) {
+                return true;
+            }
+        }
+        if is_child_of_type_heading(heading_id, &h.children) {
+            return true;
+        }
+    }
+    false
 }

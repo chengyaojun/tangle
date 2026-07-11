@@ -32,6 +32,10 @@ path = "tests/audit_regression/G6_platform_diff.rs"
 name = "G7_heading_prefix"
 path = "tests/audit_regression/G7_heading_prefix.rs"
 
+[[test]]
+name = "toplevel_callable"
+path = "tests/v03_phase1/toplevel_callable.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
