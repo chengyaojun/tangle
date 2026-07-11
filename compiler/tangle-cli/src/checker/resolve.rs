@@ -6,9 +6,12 @@ use std::collections::HashMap;
 pub fn resolve_types(module: &TangleModule) -> (TypeEnv, Vec<TangleDiagnostic>) {
     let diagnostics = vec![];
     let mut env = TypeEnv::new();
+    collect_types_recursive(&module.headings, &mut env);
+    (env, diagnostics)
+}
 
-    // Pass 1: Collect type headings (depth 3)
-    for heading in &module.headings {
+fn collect_types_recursive(headings: &[TangleHeading], env: &mut TypeEnv) {
+    for heading in headings {
         if heading.role == HeadingRole::Type {
             let name = heading
                 .symbol_name
@@ -50,9 +53,10 @@ pub fn resolve_types(module: &TangleModule) -> (TypeEnv, Vec<TangleDiagnostic>) 
                 );
             }
         }
+        // Recurse into children regardless of this heading's role —
+        // a Type heading may be nested under a Program or Section heading.
+        collect_types_recursive(&heading.children, env);
     }
-
-    (env, diagnostics)
 }
 
 fn collect_method_sigs(children: &[TangleHeading]) -> HashMap<String, CallableSignature> {
