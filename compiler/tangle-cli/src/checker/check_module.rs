@@ -147,6 +147,23 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         let mut block_env = type_env.clone();
         block_env.receiver = receiver;
 
+        // Inject current heading's params into local scope so method bodies
+        // can reference their declared parameters.
+        // Find the heading that owns this code block by heading_id.
+        if let Some(owner) = find_heading_by_id(&block.heading_id, &module.headings) {
+            for p in &owner.params {
+                let ty = p.type_name.as_ref()
+                    .and_then(|tn| match tn.as_str() {
+                        "String" => Some(Type::Primitive(PrimitiveType { name: "String".into() })),
+                        "Int" => Some(Type::Primitive(PrimitiveType { name: "Int".into() })),
+                        "Bool" => Some(Type::Primitive(PrimitiveType { name: "Bool".into() })),
+                        _ => Some(Type::Primitive(PrimitiveType { name: tn.clone() })),
+                    })
+                    .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
+                block_env.variables.insert(p.name.clone(), ty);
+            }
+        }
+
         for stmt in &block.body.statements {
             match stmt {
                 Stmt::Let(s) => {
@@ -183,4 +200,17 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         parsed_blocks,
         type_env,
     }
+}
+
+/// Find a heading by id, recursively searching the heading tree.
+fn find_heading_by_id<'a>(target_id: &str, headings: &'a [crate::model::TangleHeading]) -> Option<&'a crate::model::TangleHeading> {
+    for h in headings {
+        if h.id == target_id {
+            return Some(h);
+        }
+        if let Some(found) = find_heading_by_id(target_id, &h.children) {
+            return Some(found);
+        }
+    }
+    None
 }

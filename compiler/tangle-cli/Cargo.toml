@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "G1_struct_symbol_resolution"
 path = "tests/audit_regression/G1_struct_symbol_resolution.rs"
 
+[[test]]
+name = "G2_method_param_scope"
+path = "tests/audit_regression/G2_method_param_scope.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
