@@ -14,7 +14,7 @@ pub struct BuildOptions {
 
 /// `tangle run` — compile and execute
 pub fn run(opts: BuildOptions) {
-    let (graph, source) = compile_file(&opts);
+    let (graph, _source) = compile_file(&opts);
     let module_name = module_name_from_file(&opts.file);
 
     if opts.emit_ir {
