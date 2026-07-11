@@ -72,7 +72,12 @@ foreach ($fixture in $fixtures) {
                 $process = Start-Process -FilePath "cargo" -ArgumentList (@("run","--quiet","--") + $args) -NoNewWindow -PassThru -Wait -RedirectStandardOutput $cellOutFile -RedirectStandardError $stderrFile
                 $exitCode = $process.ExitCode
 
+                # FIX: Get-Content returns $null for empty files; [regex]::Matches($null,...)
+                # throws ArgumentNullException which $ErrorActionPreference=Continue silently
+                # swallows, leaving $diagMatches with the PREVIOUS iteration's value (stale
+                # data). Coalesce to empty string to avoid stale diagnostic counts.
                 $stderrContent = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+                if ($null -eq $stderrContent) { $stderrContent = "" }
                 $diagMatches = [regex]::Matches($stderrContent, 'error\[(TANGLE_[A-Z_]+)\]')
                 $diagCount = $diagMatches.Count
                 $diagCodes = ($diagMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join '|'
@@ -98,6 +103,7 @@ foreach ($fixture in $fixtures) {
     $stderrFile = Join-Path $cellsDir "$cellId.err"
     $process = Start-Process -FilePath "cargo" -ArgumentList @("run","--quiet","--","build",$fixture,"--emit-ir") -NoNewWindow -PassThru -Wait -RedirectStandardOutput $cellOutFile -RedirectStandardError $stderrFile
     $stderrContent = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $stderrContent) { $stderrContent = "" }
     $diagMatches = [regex]::Matches($stderrContent, 'error\[(TANGLE_[A-Z_]+)\]')
     $diagCount = $diagMatches.Count
     $diagCodes = ($diagMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join '|'
