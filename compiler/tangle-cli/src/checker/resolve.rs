@@ -85,6 +85,7 @@ fn collect_method_sigs(children: &[TangleHeading]) -> HashMap<String, CallableSi
                         returns: Type::Primitive(PrimitiveType {
                             name: "Bool".into(),
                         }),
+                        is_variadic: false,
                     },
                 );
             }

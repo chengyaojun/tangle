@@ -160,6 +160,7 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             Type::Function(FunctionType {
                 params: vec![],
                 returns: Box::new(Type::Primitive(PrimitiveType { name: "Bool".into() })),
+                is_variadic: false,
             })
         }
         Expr::Propagation(e) => {

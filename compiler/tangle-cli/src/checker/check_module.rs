@@ -82,6 +82,7 @@ fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
                         env.variables.insert(alias.to_string(), Type::Function(FunctionType {
                             params: vec![],
                             returns: Box::new(Type::Primitive(PrimitiveType { name: "String".into() })),
+                            is_variadic: false,
                         }));
                     }
                 }
@@ -91,6 +92,7 @@ fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
                     (op.to_string(), CallableSignature {
                         params: vec![],
                         returns: Type::Primitive(PrimitiveType { name: "String".into() }),
+                        is_variadic: false,
                     })
                 }).collect();
                 env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
