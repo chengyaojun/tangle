@@ -7,7 +7,6 @@
 use tangle_cli::audit_support::run_collecting_diagnostics;
 
 #[test]
-#[ignore = "等 G5/G6 解析器 let stop-list bug 修复后恢复（account.tangle.md 有残留诊断）"]
 fn g5_placeholder_all_examples_run_without_diagnostics() {
     // Audit baseline: every example should run with zero diagnostics after
     // G1-G3 fixes. This test will fail if any example regresses.

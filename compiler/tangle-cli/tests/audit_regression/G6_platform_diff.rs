@@ -7,7 +7,6 @@
 use tangle_cli::audit_support::run_collecting_diagnostics;
 
 #[test]
-#[ignore = "等 G5/G6 解析器 let stop-list bug 修复后恢复（account.tangle.md 有残留诊断）"]
 fn g6_placeholder_all_targets_equivalent_for_account() {
     // Baseline: account.tangle.md diagnostics should not depend on target.
     // Since run_collecting_diagnostics runs the frontend→checker→IR pipeline
