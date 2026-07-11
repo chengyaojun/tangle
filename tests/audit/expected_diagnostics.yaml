@@ -1,0 +1,16 @@
+# Expected diagnostics whitelist.
+# A fixture not listed here is expected to produce zero diagnostics.
+# A fixture listed here declares which TANGLE_* codes it intentionally triggers.
+#
+# Format:
+#   <fixture-filename>:
+#     <surface>/<target>/<mode>:
+#       - TANGLE_CODE_1
+#       - TANGLE_CODE_2
+#
+# Empty initially. Populate as audit reveals intentional error fixtures.
+
+# Example (not yet populated — to be filled after first audit run):
+# payment.tangle.md:
+#   run/js/normal:
+#     - TANGLE_PANIC_REACHED
