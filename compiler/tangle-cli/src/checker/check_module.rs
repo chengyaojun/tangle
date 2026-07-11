@@ -8,6 +8,7 @@ use crate::checker::check::check_expression;
 use crate::parser::lexer::tokenize;
 use crate::parser::parser::parse_code_body;
 use std::collections::HashMap;
+use crate::stdlib::signatures::{stdlib_signature, stdlib_module_signatures};
 
 #[derive(Debug, Clone)]
 pub struct CheckedModule {
@@ -50,57 +51,36 @@ fn is_stdlib_import(target: &str) -> bool {
     !target.contains('/') && !target.contains('\\') && !target.starts_with('.')
 }
 
-fn stdlib_ops(name: &str) -> Option<&'static [&'static str]> {
-    match name {
-        "fmt" => Some(&["print", "println", "input", "debug", "error", "format"]),
-        "IO"  => Some(&["readFile", "writeFile", "exists", "stat", "mkdir", "read_dir", "remove", "rename", "copy", "chmod", "size", "is_dir", "is_file"]),
-        "List" => Some(&["length", "map", "filter", "push", "get"]),
-        "Map"  => Some(&["get", "set", "has", "keys", "values", "delete"]),
-        "Set"  => Some(&["add", "remove", "contains", "size", "union", "intersection", "difference", "to_list"]),
-        "Option" => Some(&["Some", "None", "unwrap", "is_some", "is_none", "map", "or_else"]),
-        "Math" => Some(&["abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow"]),
-        "String" => Some(&["length", "concat", "split", "replace", "to_upper", "to_lower", "trim", "contains"]),
-        "Env"  => Some(&["get", "set", "remove", "args", "current_dir", "exit"]),
-        "Path" => Some(&["join", "basename", "dirname", "extension", "is_absolute", "normalize", "relative", "split"]),
-        _ => None,
-    }
-}
-
 fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
     for imp in imports {
         if !is_stdlib_import(&imp.target) { continue; }
-        if let Some(operations) = stdlib_ops(&imp.target) {
-            // Split comma-separated aliases: [print, println](fmt)
-            let aliases: Vec<&str> = imp.alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-            let fn_import = aliases.len() > 1
-                || (aliases.len() == 1 && operations.contains(&aliases[0]));
+        if stdlib_module_signatures(&imp.target).is_none() { continue; }
 
-            if fn_import {
-                // Function import: [println](fmt) -> inject each as variable
-                for alias in &aliases {
-                    if operations.contains(alias) {
-                        env.variables.insert(alias.to_string(), Type::Function(FunctionType {
-                            params: vec![],
-                            returns: Box::new(Type::Primitive(PrimitiveType { name: "String".into() })),
-                            is_variadic: false,
-                        }));
-                    }
+        let aliases: Vec<&str> = imp.alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let fn_import = aliases.len() > 1
+            || (aliases.len() == 1 && stdlib_signature(&imp.target, aliases[0]).is_some());
+
+        if fn_import {
+            for alias in &aliases {
+                if let Some(sig) = stdlib_signature(&imp.target, alias) {
+                    env.variables.insert(alias.to_string(), Type::Function(FunctionType {
+                        params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
+                        returns: Box::new(sig.returns.clone()),
+                        is_variadic: sig.is_variadic,
+                    }));
                 }
-            } else {
-                // Module import: [fmt](fmt) -> inject struct type
-                let methods: HashMap<String, CallableSignature> = operations.iter().map(|op| {
-                    (op.to_string(), CallableSignature {
-                        params: vec![],
-                        returns: Type::Primitive(PrimitiveType { name: "String".into() }),
-                        is_variadic: false,
-                    })
-                }).collect();
-                env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
-                    name: imp.target.clone(),
-                    fields: HashMap::new(),
-                    methods,
-                }));
             }
+        } else {
+            let methods: HashMap<String, CallableSignature> = stdlib_module_signatures(&imp.target)
+                .unwrap()
+                .iter()
+                .map(|(name, sig)| (name.to_string(), sig.clone()))
+                .collect();
+            env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
+                name: imp.target.clone(),
+                fields: HashMap::new(),
+                methods,
+            }));
         }
     }
 }

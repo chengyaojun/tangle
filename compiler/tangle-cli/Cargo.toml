@@ -40,6 +40,10 @@ path = "tests/v03_phase1/toplevel_callable.rs"
 name = "stdlib_signatures"
 path = "tests/v03_phase1/stdlib_signatures.rs"
 
+[[test]]
+name = "stdlib_module_call"
+path = "tests/v03_phase1/stdlib_module_call.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
