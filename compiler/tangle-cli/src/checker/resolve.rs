@@ -123,10 +123,8 @@ fn find_receiver_recursive<'a>(
     headings: &'a [TangleHeading],
 ) -> Option<&'a TangleHeading> {
     for h in headings {
-        if h.role == HeadingRole::Type {
-            if h.children.iter().any(|c| c.id == target_id) {
-                return Some(h);
-            }
+        if h.role == HeadingRole::Type && h.children.iter().any(|c| c.id == target_id) {
+            return Some(h);
         }
         if let Some(found) = find_receiver_recursive(target_id, &h.children) {
             return Some(found);

@@ -132,11 +132,11 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
                 let fields: std::collections::HashMap<String, Type> = parent_heading.params.iter()
                     .map(|p| {
                         let ty = p.type_name.as_ref()
-                            .and_then(|tn| match tn.as_str() {
-                                "String" => Some(Type::Primitive(PrimitiveType { name: "String".into() })),
-                                "Int" => Some(Type::Primitive(PrimitiveType { name: "Int".into() })),
-                                "Bool" => Some(Type::Primitive(PrimitiveType { name: "Bool".into() })),
-                                _ => Some(Type::Primitive(PrimitiveType { name: tn.clone() })),
+                            .map(|tn| match tn.as_str() {
+                                "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
+                                "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
+                                "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
+                                _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
                             })
                             .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
                         (p.name.clone(), ty)
@@ -153,11 +153,11 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         if let Some(owner) = find_heading_by_id(&block.heading_id, &module.headings) {
             for p in &owner.params {
                 let ty = p.type_name.as_ref()
-                    .and_then(|tn| match tn.as_str() {
-                        "String" => Some(Type::Primitive(PrimitiveType { name: "String".into() })),
-                        "Int" => Some(Type::Primitive(PrimitiveType { name: "Int".into() })),
-                        "Bool" => Some(Type::Primitive(PrimitiveType { name: "Bool".into() })),
-                        _ => Some(Type::Primitive(PrimitiveType { name: tn.clone() })),
+                    .map(|tn| match tn.as_str() {
+                        "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
+                        "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
+                        "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
+                        _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
                     })
                     .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
                 block_env.variables.insert(p.name.clone(), ty);

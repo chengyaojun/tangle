@@ -43,7 +43,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
     }
 
     let mut graph = merged_graph.unwrap_or_else(|| {
-        let entry_id = id_gen.next();
+        let entry_id = id_gen.fresh();
         let mut g = create_graph(entry_id.clone());
         g.nodes.push(IRNode {
             id: entry_id.clone(), kind: IRNodeKind::Terminal,
@@ -147,7 +147,7 @@ fn lower_function_body(
     blocks: &[&ParsedCodeBlock],
     id_gen: &mut FreshNodeId,
 ) -> (Vec<IRNode>, Vec<IREdge>, String, Vec<IRErrorEdge>) {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut nodes: Vec<IRNode> = vec![IRNode {
         id: entry_id.clone(), kind: IRNodeKind::Compute,
         label: "entry".into(), source_span: None, source_text: None,
@@ -164,7 +164,7 @@ fn lower_function_body(
                 Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
             };
             let src = stmt_source(stmt, &block.source);
-            let node_id = id_gen.next();
+            let node_id = id_gen.fresh();
             nodes.push(IRNode {
                 id: node_id.clone(), kind: node_kind, label,
                 source_span: None, source_text: Some(src),
@@ -177,7 +177,7 @@ fn lower_function_body(
         }
     }
 
-    let terminal_id = id_gen.next();
+    let terminal_id = id_gen.fresh();
     nodes.push(IRNode {
         id: terminal_id.clone(), kind: IRNodeKind::Terminal,
         label: "exit".into(), source_span: None, source_text: None,

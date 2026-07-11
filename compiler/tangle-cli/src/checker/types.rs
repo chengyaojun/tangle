@@ -71,7 +71,7 @@ pub fn is_subtype(sub: &Type, sup: &Type) -> bool {
         (Type::Struct(s), Type::Interface(i)) => i
             .methods
             .iter()
-            .all(|(name, sig)| s.methods.get(name).map_or(false, |ms| callable_sigs_match(ms, sig))),
+            .all(|(name, sig)| s.methods.get(name).is_some_and(|ms| callable_sigs_match(ms, sig))),
         _ => types_equal(sub, sup),
     }
 }

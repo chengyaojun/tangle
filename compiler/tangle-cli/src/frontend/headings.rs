@@ -47,14 +47,12 @@ pub fn parse_heading_text(text: &str, depth: usize, span: &SourceSpan) -> Parsed
                     });
                 }
             }
-            4..=6 => {
-                if !first_char.is_lowercase() {
-                    diagnostics.push(TangleDiagnostic {
-                        code: codes::INVALID_HEADING_CASE.into(),
-                        message: format!("Heading '{}' at depth {} must be camelCase", trimmed, depth),
-                        span: span.clone(),
-                    });
-                }
+            4..=6 if !first_char.is_lowercase() => {
+                diagnostics.push(TangleDiagnostic {
+                    code: codes::INVALID_HEADING_CASE.into(),
+                    message: format!("Heading '{}' at depth {} must be camelCase", trimmed, depth),
+                    span: span.clone(),
+                });
             }
             _ => {}
         }

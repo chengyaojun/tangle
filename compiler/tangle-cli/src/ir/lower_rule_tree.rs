@@ -1,7 +1,7 @@
 use crate::ir::graph::*;
 
 pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
     graph.nodes.push(IRNode {
@@ -28,7 +28,7 @@ pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeI
 
     let mut prev_id = entry_id;
     for item in items {
-        let node_id = id_gen.next();
+        let node_id = id_gen.fresh();
         graph.nodes.push(IRNode {
             id: node_id.clone(),
             kind: IRNodeKind::Decision,

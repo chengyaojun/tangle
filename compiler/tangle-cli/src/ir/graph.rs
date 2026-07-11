@@ -49,7 +49,7 @@ pub struct IRErrorEdge {
     pub source_span: Option<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleGraph {
     pub nodes: Vec<IRNode>,
@@ -88,7 +88,7 @@ pub struct FreshNodeId {
 impl FreshNodeId {
     pub fn new() -> Self { FreshNodeId { counter: 0 } }
 
-    pub fn next(&mut self) -> String {
+    pub fn fresh(&mut self) -> String {
         let id = format!("n{}", self.counter);
         self.counter += 1;
         id
@@ -97,13 +97,9 @@ impl FreshNodeId {
     pub fn reset(&mut self) { self.counter = 0; }
 }
 
-impl Default for RuleGraph {
+impl Default for FreshNodeId {
     fn default() -> Self {
-        RuleGraph {
-            nodes: vec![], edges: vec![], error_edges: vec![],
-            entry_node_id: String::new(), imported_stdlib: vec![], stdlib_imports: vec![],
-            functions: vec![],
-        }
+        Self::new()
     }
 }
 

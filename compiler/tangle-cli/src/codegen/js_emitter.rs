@@ -121,7 +121,7 @@ fn translate_struct_literals(src: &str) -> String {
                 j += 1;
             }
             if j < chars.len() && chars[j] == '{' && !is_block_keyword(&ident) {
-                if ident == "this" || ident.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if ident == "this" || ident.chars().next().is_some_and(|c| c.is_uppercase()) {
                     out.push('{');
                     i = j + 1;
                     continue;
@@ -216,7 +216,7 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
 /// indented body lines WITHOUT the surrounding `function ... { }`.
 fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str) -> String {
     let uses_propagation = nodes.iter().any(|n| {
-        n.source_text.as_ref().map_or(false, |s| statement_uses_propagation(s))
+        n.source_text.as_ref().is_some_and(|s| statement_uses_propagation(s))
     });
     let mut out = String::new();
     if uses_propagation {

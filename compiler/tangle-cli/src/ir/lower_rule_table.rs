@@ -1,7 +1,7 @@
 use crate::ir::graph::*;
 
 pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
     graph.nodes.push(IRNode {
@@ -43,15 +43,19 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
         let action = cells.last().unwrap().clone();
         let mut conditions = vec![];
 
-        for i in 0..condition_count.min(cells.len().saturating_sub(1)) {
-            let cond_val = cells[i].trim().to_string();
+        for (i, cell) in cells
+            .iter()
+            .enumerate()
+            .take(condition_count.min(cells.len().saturating_sub(1)))
+        {
+            let cond_val = cell.trim().to_string();
             if !cond_val.is_empty() && cond_val != "-" {
                 let col_name = headers.get(i).map(|h| h.trim()).unwrap_or("?");
                 conditions.push(format!("{} = {}", col_name, cond_val));
             }
         }
 
-        let node_id = id_gen.next();
+        let node_id = id_gen.fresh();
         let guard = if conditions.is_empty() {
             None
         } else {

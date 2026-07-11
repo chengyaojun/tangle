@@ -59,7 +59,7 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
     }
 
     let entry_node_id = entry_id.unwrap_or_else(|| {
-        let id = id_gen.next();
+        let id = id_gen.fresh();
         nodes.push(IRNode {
             id: id.clone(),
             kind: IRNodeKind::Terminal,
@@ -78,7 +78,7 @@ fn register_node(
     entry_id: &mut Option<String>, id_gen: &mut FreshNodeId,
 ) {
     if node_map.contains_key(mermaid_id) { return; }
-    let node_id = id_gen.next();
+    let node_id = id_gen.fresh();
     let kind = if is_error { IRNodeKind::ErrorTerminal } else { IRNodeKind::Action };
     node_map.insert(mermaid_id.to_string(), node_id.clone());
     if entry_id.is_none() {

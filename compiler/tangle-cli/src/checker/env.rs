@@ -28,3 +28,9 @@ impl TypeEnv {
         }
     }
 }
+
+impl Default for TypeEnv {
+    fn default() -> Self {
+        Self::new()
+    }
+}
