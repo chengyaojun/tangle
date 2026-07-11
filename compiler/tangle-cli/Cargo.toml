@@ -36,6 +36,10 @@ path = "tests/audit_regression/G7_heading_prefix.rs"
 name = "toplevel_callable"
 path = "tests/v03_phase1/toplevel_callable.rs"
 
+[[test]]
+name = "stdlib_signatures"
+path = "tests/v03_phase1/stdlib_signatures.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
