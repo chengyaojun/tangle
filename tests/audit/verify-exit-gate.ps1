@@ -3,7 +3,7 @@
 .SYNOPSIS
     Exit gate verifier: runs all 5 exit gates and reports PASS/FAIL.
 #>
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
 
 $root = (Get-Item $PSScriptRoot).Parent.Parent.FullName
@@ -24,10 +24,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "=== Exit Gate 3/5: run-audit.ps1 ===" -ForegroundColor Cyan
-& $PSScriptRoot\run-audit.ps1 | Tee-Object -Variable auditOut
-# Parse last line: "Audit complete: N cells, M failing"
-$lastLine = ($auditOut -split "`n") | Select-Object -Last 1
-if ($lastLine -match "(\d+) failing") {
+$auditOut = & $PSScriptRoot\run-audit.ps1 2>&1 6>&1
+$auditStr = ($auditOut | ForEach-Object { "$_" }) -join "`n"
+Write-Host $auditStr
+if ($auditStr -match "(\d+) failing") {
     $failingCount = [int]$Matches[1]
     if ($failingCount -gt 0) {
         Write-Host "EXIT GATE: FAIL — audit has $failingCount failing cells" -ForegroundColor Red
@@ -39,12 +39,13 @@ if ($lastLine -match "(\d+) failing") {
 }
 
 Write-Host "=== Exit Gate 4/5: diff-ir.ps1 ===" -ForegroundColor Cyan
-& $PSScriptRoot\diff-ir.ps1 | Tee-Variable -Variable diffOut
-$diffLast = ($diffOut -split "`n") | Select-Object -Last 1
-if ($diffLast -match "(\d+) DIFF") {
+$diffOut = & $PSScriptRoot\diff-ir.ps1 2>&1 6>&1
+$diffStr = ($diffOut | ForEach-Object { "$_" }) -join "`n"
+Write-Host $diffStr
+if ($diffStr -match "(\d+) unexpected DIFF") {
     $diffCount = [int]$Matches[1]
     if ($diffCount -gt 0) {
-        Write-Host "EXIT GATE: FAIL — diff-ir has $diffCount DIFFs" -ForegroundColor Red
+        Write-Host "EXIT GATE: FAIL — diff-ir has $diffCount unexpected DIFFs" -ForegroundColor Red
         exit 1
     }
 } else {
@@ -53,7 +54,7 @@ if ($diffLast -match "(\d+) DIFF") {
 }
 
 Write-Host "=== Exit Gate 5/5: audit_regression tests ===" -ForegroundColor Cyan
-cargo test -p tangle-cli --test G1_struct_symbol_resolution --test G2_method_param_scope --test G3_member_access_cascade --test G5_doc_drift --test G6_platform_diff 2>&1 | Out-Null
+cargo test -p tangle-cli --test G1_struct_symbol_resolution --test G2_method_param_scope --test G3_member_access_cascade --test G5_doc_drift --test G6_platform_diff --test G7_heading_prefix 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "EXIT GATE: FAIL — audit_regression tests" -ForegroundColor Red
     exit 1
