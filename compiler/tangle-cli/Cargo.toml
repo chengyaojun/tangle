@@ -20,6 +20,14 @@ path = "tests/audit_regression/G2_method_param_scope.rs"
 name = "G3_member_access_cascade"
 path = "tests/audit_regression/G3_member_access_cascade.rs"
 
+[[test]]
+name = "G5_doc_drift"
+path = "tests/audit_regression/G5_doc_drift.rs"
+
+[[test]]
+name = "G6_platform_diff"
+path = "tests/audit_regression/G6_platform_diff.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
