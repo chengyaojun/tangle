@@ -260,6 +260,17 @@ tangle lsp                                     # stdio LSP 服务器
 - 源码直译 codegen（AST → 真实代码，替代注释占位）
 - 按模块 stdlib 预绑（只 emit 实际导入的模块）
 
+### ✅ v0.2.1 — 质量审计 — 已完成
+
+| 闸门 | 状态 |
+|------|------|
+| 审计矩阵 (210 单元格) 零虚假诊断 | ✅ |
+| `cargo test --workspace` (108 测试) | ✅ |
+| `cargo clippy --workspace -- -D warnings` | ✅ |
+| 对 TS 参考实现的差分 IR 测试 | ✅ |
+
+详见 [docs/audit/findings.md](docs/audit/findings.md)。
+
 **B5 后 v0.3.0 演进路径 — 四阶段收紧与独立执行：**
 
 | 阶段 | 聚焦 | 要点 |

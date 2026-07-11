@@ -261,6 +261,17 @@ JS/TS codegen only. Semantic validation + business MVP.
 - Source-text codegen (AST → real code, not comments)
 - Per-module stdlib prelude (only emit what's imported)
 
+### ✅ v0.2.1 — Quality Audit — Complete
+
+| Gate | Status |
+|------|--------|
+| Audit matrix (210 cells) zero false diagnostics | ✅ |
+| `cargo test --workspace` (108 tests) | ✅ |
+| `cargo clippy --workspace -- -D warnings` | ✅ |
+| Differential IR test against TS reference | ✅ |
+
+See [docs/audit/findings.md](docs/audit/findings.md) for audit details.
+
 **Post-B5 v0.3.0 development path — four phases of tightening & independent execution:**
 
 | Phase | Focus | Highlights |
