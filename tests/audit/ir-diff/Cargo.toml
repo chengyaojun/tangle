@@ -1,0 +1,19 @@
+[package]
+name = "ir-diff"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ir-diff"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Standalone workspace — ir-diff is NOT a member of the root Cargo workspace
+# (per project memory: "Audit scripts and tools must be placed in tests/audit/
+# directory, not part of Cargo workspace"). The empty [workspace] table opts
+# out of the parent workspace so cargo builds into ./target/ instead of the
+# root target/ directory.
+[workspace]
