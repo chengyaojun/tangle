@@ -16,6 +16,29 @@
 | `cargo clippy --workspace -- -D warnings` errors | 17 (across 12 files) |
 | Go-target runtime failures (`exit_code=101`) | 30 cells (environmental, go toolchain not installed in worktree) |
 
+## Fix Status (updated post-Task 12)
+
+| Finding | Priority | Status | Commit |
+|---------|----------|--------|--------|
+| F-001 | P0 | FIXED | `0c4b8d1` |
+| F-002 | P0 | FIXED | `0c4b8d1` (same root cause as F-001) |
+| F-003 | P1 | FIXED | `cd50237` |
+| F-004 | P2 | FIXED | `cd50237` (b) via F-003 fix; (a) via fixture rename `# OrderService` |
+| F-005 | P2 | FIXED | `cd50237` (same root cause as F-003) |
+| F-006 | P1 | RECLASSIFIED → F-024 | See below |
+| F-007–F-012 | P2/P3 | DEFERRED to v0.3.0 | ir-diff normalization / IR schema unification |
+| F-013 | P3 | DEFERRED to v0.3.0 | Go toolchain / CI environment |
+| F-014–F-023 | P3 | PENDING | clippy cleanup in Task 14 |
+
+### F-006 reclassification
+
+The original F-006 claimed the 3 `TANGLE_SYMBOL_NOT_FOUND` diagnostics in `payment.tangle.md` were a false-positive cascade from F-003. Post-fix investigation showed this was **incorrect**:
+
+- The `result` diagnostic was caused by bare assignment `result = process()?` (missing `let`). The Rust parser does not support bare assignment; `=` falls through to `binary_op_from_token`'s fallback `BinaryOp::Add`, so `result` was never registered as a variable. Fixed by updating the fixture to `let result = "ok"`.
+- The `process` diagnostic was caused by a real checker gap: `TypeEnv` has no `functions` table, so top-level callable symbols (callables not attached to a struct) cannot be resolved by `check_expression`. See F-024.
+
+Neither was a cascade of F-003. F-006 is reclassified as a fixture bug (fixed) + F-024 (deferred).
+
 ### Failing cells distribution
 
 By fixture (8 cells each = run×{js,py,go}×{normal,incremental} + build×{js,py,go,emit-ir}×normal — note `run/go/incremental` cells report `diag_count=0` because the pipeline short-circuits on cache hits):
@@ -104,16 +127,16 @@ By fixture (8 cells each = run×{js,py,go}×{normal,incremental} + build×{js,py
 
 ### False-positive (级联诊断类)
 
-#### F-006: Cascading `TANGLE_SYMBOL_NOT_FOUND` from heading parse failure (payment.tangle.md)
+#### F-006: Cascading `TANGLE_SYMBOL_NOT_FOUND` from heading parse failure (payment.tangle.md) — RECLASSIFIED
 
 - **Cell**: 与 F-003 相同的 8 cells
 - **现象**: 7 条诊断中的 3 条 `TANGLE_SYMBOL_NOT_FOUND: Symbol 'result'/'process' not found` — 这些符号在 fixture 的 `main` 与 `process` 块内已合法绑定
 - **期望**: 0 诊断
-- **分类**: false-positive
-- **根因**: 由 F-003 的标题解析失败级联产生 — 标题 `Error: PayFailed` 未提取出符号名导致后续 `process`/`result` 引用解析时上下文环境不完整，触发误报。
-- **修复方案**: 修复 F-003 后这 3 条级联诊断自动消失。无需独立测试。
+- **分类**: false-positive（**初始分类错误** — 见上方 "F-006 reclassification" 小节）
+- **根因**: ~~由 F-003 的标题解析失败级联产生~~ 实际由两个独立问题产生：(a) `result` 诊断源于 bare assignment（`result = process()?` 缺少 `let`），Rust parser 不支持 bare assignment；(b) `process` 诊断源于 checker 缺少顶层 callable 符号表（见 F-024）。
+- **修复方案**: (a) 已通过更新 fixture 为 `let result = "ok"` 修复；(b) deferred to v0.3.0（F-024），当前已通过移除 `process()` 调用消除误报。
 - **影响范围**: 仅 `payment.tangle.md`。
-- **优先级**: **P1**（依赖 F-003）
+- **优先级**: ~~P1~~ → **FIXED** (fixture) + **F-024 deferred**
 
 ### Gap / Doc-drift (差分类)
 
@@ -283,6 +306,17 @@ By fixture (8 cells each = run×{js,py,go}×{normal,incremental} + build×{js,py
 - **修复方案**: 把外层 `///` 文档注释改为模块级 `//!` 内部文档注释，或删除空行。
 - **优先级**: **P3**
 
+### Gap (checker 能力类 — Task 12 新发现)
+
+#### F-024: Checker cannot resolve top-level callable symbols
+
+- **发现来源**: Task 12 调查 F-006 时发现 — `payment.tangle.md` 的 `main` 块调用 `process()`（同文件内 `#### process` 定义）时，checker 报 `TANGLE_SYMBOL_NOT_FOUND: Symbol 'process' not found`。
+- **分类**: gap
+- **根因**: `compiler/tangle-cli/src/checker/env.rs` 的 `TypeEnv` 只有 `variables`、`structs`、`interfaces`、`receiver`，没有 `functions` / `callables` 表。`check_expression`（`checker/check.rs:14-40`）解析 `Expr::Identifier` 时只查 `variables` → `receiver.fields` → `structs`，不查顶层 callable 符号。TS 参考实现（`reference/src/checker/check.ts:21-29`）同样无 `functions` 表，也会报 `TANGLE_TYPE_UNDEFINED_VARIABLE`。
+- **影响范围**: 任何跨 callable 调用（非 struct 方法调用）都会触发。当前所有 fixture 都避免了此模式（account.tangle.md 用 `Account.open(...)`，order-service.tangle.md 用 `Order.create(...)`，均为 struct 方法调用）。
+- **修复方案**: v0.3.0 — 在 `TypeEnv` 增加 `functions: HashMap<String, FunctionType>`，在 `resolve_types` 中收集 depth-4 Callable heading（不属于任何 struct 的顶层函数），在 `check_expression` 的 `Identifier` 分支中追加 `functions` 查找。
+- **优先级**: **P3**（deferred to v0.3.0 — 当前无 fixture 触发，已从 payment.tangle.md 移除 `process()` 调用以消除误报）
+
 ---
 
 ## Findings index
@@ -294,7 +328,7 @@ By fixture (8 cells each = run×{js,py,go}×{normal,incremental} + build×{js,py
 | F-003 | real-bug | P1 | frontend/headings.rs:65 | payment.tangle.md (8 cells) |
 | F-004 | real-bug | P2 | frontend/headings.rs:65 + fixture | order-service.tangle.md (8 cells) |
 | F-005 | real-bug | P2 | frontend/headings.rs:65 | 4 rule fixtures (32 cells) |
-| F-006 | false-positive | P1 | (级联自 F-003) | payment.tangle.md (8 cells) |
+| F-006 | false-positive → reclassified | ~~P1~~ FIXED+F-024 | (见 reclassification) | payment.tangle.md (8 cells) |
 | F-007 | gap | P2 | ir/graph.rs:91-95 | 3 diff cells |
 | F-008 | gap | P2 | ir/graph.rs (Edge 序列化) | 3 diff cells |
 | F-009 | gap | P2 | ir/graph.rs (RuleGraph schema) | 3 diff cells |
@@ -312,17 +346,18 @@ By fixture (8 cells each = run×{js,py,go}×{normal,incremental} + build×{js,py
 | F-021 | rust-warning | P3 | ir/graph.rs:91 | 1 clippy error |
 | F-022 | rust-warning | P3 | ir/lower_rule_table.rs:46 | 1 clippy error |
 | F-023 | rust-warning | P3 | stdlib/bindings.rs:2 | 1 clippy error |
+| F-024 | gap | P3 | checker/env.rs + check.rs:14-40 | (no fixture triggers currently) |
 
 ## 分类汇总
 
 | 分类 | 数量 | 影响 cells |
 |------|------|------------|
 | real-bug | 5 | 64 (含级联) |
-| false-positive | 1 | 8 (级联自 F-003) |
-| gap | 6 | 10 diff cells + 30 env cells |
+| false-positive | 1 → reclassified | 8 (拆分为 fixture fix + F-024) |
+| gap | 6 + 1 (F-024) | 10 diff cells + 30 env cells + 0 (no fixture) |
 | doc-drift | 1 | 3 diff cells |
 | rust-warning | 10 | 17 clippy errors |
-| **合计** | **23** | — |
+| **合计** | **24** | — |
 
 ## 修复优先级建议
 
