@@ -49,8 +49,12 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                 Type::Struct(s) => {
                     if let Some(field_ty) = s.fields.get(&e.member) {
                         field_ty.clone()
-                    } else if let Some(_method) = s.methods.get(&e.member) {
-                        Type::Primitive(PrimitiveType { name: "Bool".into() })
+                    } else if let Some(sig) = s.methods.get(&e.member) {
+                        Type::Function(FunctionType {
+                            params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
+                            returns: Box::new(sig.returns.clone()),
+                            is_variadic: sig.is_variadic,
+                        })
                     } else {
                         diags.push(TangleDiagnostic {
                             code: "TANGLE_SYMBOL_NOT_FOUND".into(),
