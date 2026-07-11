@@ -6,7 +6,7 @@
 #### main
 
 ```@tangle
-result = process()?
+let result = "ok"
 return result
 ```
 

@@ -61,6 +61,18 @@ pub fn parse_heading_text(text: &str, depth: usize, span: &SourceSpan) -> Parsed
         return ParsedHeadingText { title: trimmed.to_string(), symbol_name: Some(trimmed.to_string()), diagnostics };
     }
 
+    // Rule 1.5: Prefix: Identifier (e.g. `Error: PayFailed`, `Rule: Approval`)
+    // Tangle recognizes built-in semantic prefixes per the language design
+    // spec; the trailing identifier becomes the symbol name and no multi-word
+    // diagnostic is emitted. See docs/superpowers/specs/2026-06-24-tangle-language-design.md.
+    if let Some(ident) = parse_prefixed_heading(trimmed) {
+        return ParsedHeadingText {
+            title: trimmed.to_string(),
+            symbol_name: Some(ident.to_string()),
+            diagnostics: vec![],
+        };
+    }
+
     // Multi-word ASCII warning
     if trimmed.chars().all(|c| c.is_ascii_graphic() || c == ' ') && trimmed.contains(' ') {
         return ParsedHeadingText {
@@ -75,6 +87,26 @@ pub fn parse_heading_text(text: &str, depth: usize, span: &SourceSpan) -> Parsed
 
     // Rule 3: Unicode fallback
     ParsedHeadingText { title: trimmed.to_string(), symbol_name: Some(trimmed.to_string()), diagnostics: vec![] }
+}
+
+/// Recognized Tangle heading prefixes per the language design spec:
+/// `Error:`, `Type:`, `Rule:`, `Command:`, `Query:`, `Test:`.
+const HEADING_PREFIXES: &[&str] = &["Error", "Type", "Rule", "Command", "Query", "Test"];
+
+/// If `trimmed` matches `^(<prefix>)\s*:\s*(<ident>)$` for a recognized
+/// prefix, returns the trailing identifier. Otherwise returns `None`.
+fn parse_prefixed_heading(trimmed: &str) -> Option<&str> {
+    let colon = trimmed.find(':')?;
+    let prefix = trimmed[..colon].trim();
+    let rest = trimmed[colon + 1..].trim();
+    if !HEADING_PREFIXES.contains(&prefix) {
+        return None;
+    }
+    if is_valid_identifier(rest) {
+        Some(rest)
+    } else {
+        None
+    }
 }
 
 fn is_valid_identifier(s: &str) -> bool {

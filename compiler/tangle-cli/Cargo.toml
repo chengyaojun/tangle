@@ -28,6 +28,10 @@ path = "tests/audit_regression/G5_doc_drift.rs"
 name = "G6_platform_diff"
 path = "tests/audit_regression/G6_platform_diff.rs"
 
+[[test]]
+name = "G7_heading_prefix"
+path = "tests/audit_regression/G7_heading_prefix.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
