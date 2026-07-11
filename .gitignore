@@ -43,4 +43,8 @@ coverage/
 # Claude / AI agent artifacts
 .claude/
 .codex/
+.trae/
 .cache/
+
+# Git worktrees
+.worktrees/
