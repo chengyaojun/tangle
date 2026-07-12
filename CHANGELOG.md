@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.3.0 — Phase 1 Call Expression Type Checking
+
+- Feat: introduce `Type::Any` and `CallableSignature::is_variadic` to model variadic functions (e.g. `fmt.println`)
+- Feat: resolve top-level callable symbols via new `TypeEnv::functions` table (F-024)
+- Feat: register stdlib signatures for all 19 modules — `fmt`, `io`, `math`, `sync`, `json`, `time`, `os`, `crypto`, `collections`, `strings`, `path`, `net`, `random`, `convert`, `encoding`, `regexp`, `debug`, `logger`, `runtime`
+- Feat: `resolve_stdlib_imports` injects real signatures from the registry, replacing the previous dummy `(params=[], returns=String)`
+- Feat: `MemberAccess` returns `Type::Function` for method references so callee resolution works for `Account.open(...)`
+- Feat: `Call` expression type checking — arity mismatch (`TANGLE_ARITY_MISMATCH`) and parameter type mismatch (`TANGLE_TYPE_ERROR`) diagnostics
+- Test: add `v03_phase1` suite covering top-level callable, stdlib signatures, stdlib module/function call, member access type, and Call arity/type checks
+- Test: add `compat_check` regression test verifying zero diagnostics on all 6 examples + 9 fixtures
+- Style: fix `clippy::collapsible_if` warning in `is_child_of_type_heading`
+
+### Verification
+
+- `cargo test --workspace`: 127 tests pass, 0 failures, 0 ignored
+- `cargo clippy --workspace --all-targets -- -D warnings`: zero warnings
+- `tests/audit/run-audit.ps1`: 210 cells, 0 failing, zero diagnostics across all CLI surfaces × codegen targets × modes × fixtures
+- Manual compatibility check: all 6 examples + 9 fixtures produce zero diagnostics via `run_collecting_diagnostics`
+
+### Known limitations (deferred to later phases)
+
+- Variadic function arguments are not type-checked (e.g. `Path.join` extra args). Tracked as Phase 1 design boundary.
+- Non-Function callee returns `Type::Any`, losing type information for direct constructor-style calls. Not triggered by any current example/fixture.
+- `types_equal` does not compare `Function`/`Sum`/`GenericInstance`/`Var` types (returns `false`). No false positives observed in practice.
+
 ## v0.2.1 — Quality Audit
 
 - Fix: parser expression stop-list omits `Let`/`Const` (F-001/F-002) — eliminates false `TANGLE_SYMBOL_NOT_FOUND` / `TANGLE_TYPE_ERROR` diagnostics in `account.tangle.md` and `expression.tangle.md`

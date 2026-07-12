@@ -272,6 +272,21 @@ JS/TS codegen only. Semantic validation + business MVP.
 
 See [docs/audit/findings.md](docs/audit/findings.md) for audit details.
 
+### ✅ v0.3.0 Phase 1 — Call Expression Type Checking — Complete
+
+| Gate | Status |
+|------|--------|
+| Audit matrix (210 cells) zero false diagnostics | ✅ |
+| `cargo test --workspace` (127 tests) | ✅ |
+| `cargo clippy --workspace --all-targets -- -D warnings` | ✅ |
+| Compat check (6 examples + 9 fixtures zero diagnostics) | ✅ |
+
+**Highlights:**
+- `Type::Any` + `is_variadic` for variadic stdlib functions
+- F-024: top-level callable symbol resolution
+- 19-module stdlib signature registry
+- `Call` arity + parameter type checking (`TANGLE_ARITY_MISMATCH`, `TANGLE_TYPE_ERROR`)
+
 **Post-B5 v0.3.0 development path — four phases of tightening & independent execution:**
 
 | Phase | Focus | Highlights |

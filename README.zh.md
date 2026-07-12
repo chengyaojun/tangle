@@ -271,6 +271,21 @@ tangle lsp                                     # stdio LSP 服务器
 
 详见 [docs/audit/findings.md](docs/audit/findings.md)。
 
+### ✅ v0.3.0 阶段一 — Call 表达式完整类型检查 — 已完成
+
+| 闸门 | 状态 |
+|------|------|
+| 审计矩阵 (210 单元格) 零虚假诊断 | ✅ |
+| `cargo test --workspace` (127 测试) | ✅ |
+| `cargo clippy --workspace --all-targets -- -D warnings` | ✅ |
+| 兼容性验证 (6 examples + 9 fixtures 零诊断) | ✅ |
+
+**要点：**
+- `Type::Any` + `is_variadic` 支持变参 stdlib 函数
+- F-024：顶层 callable 符号解析
+- 19 模块 stdlib 签名注册表
+- `Call` 参数 arity + 类型检查（`TANGLE_ARITY_MISMATCH`、`TANGLE_TYPE_ERROR`）
+
 **B5 后 v0.3.0 演进路径 — 四阶段收紧与独立执行：**
 
 | 阶段 | 聚焦 | 要点 |
