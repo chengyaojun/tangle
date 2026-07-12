@@ -48,6 +48,10 @@ path = "tests/v03_phase1/stdlib_module_call.rs"
 name = "member_access_type"
 path = "tests/v03_phase1/member_access_type.rs"
 
+[[test]]
+name = "call_type_checking"
+path = "tests/v03_phase1/call_type_checking.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
