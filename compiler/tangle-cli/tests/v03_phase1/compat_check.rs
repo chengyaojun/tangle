@@ -1,6 +1,6 @@
-//! Temporary verification test for Task 7: Phase 1 compatibility check.
-//! Verifies that all 6 examples and 9 test fixtures produce zero diagnostics
-//! (no false positives introduced by Phase 1 Call type checking).
+//! Permanent regression test guarding Phase 1 compatibility: verifies that all
+//! 6 examples and 9 test fixtures produce zero diagnostics (no false positives
+//! from Call type checking).
 
 use tangle_cli::audit_support::run_collecting_diagnostics;
 
@@ -35,7 +35,7 @@ fn examples_produce_zero_diagnostics() {
 }
 
 #[test]
-fn test_fixtures_produce_zero_diagnostics() {
+fn fixtures_produce_zero_diagnostics() {
     let fixtures = [
         "../../tests/basic/hello.tangle.md",
         "../../tests/basic/expression.tangle.md",
