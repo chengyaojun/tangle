@@ -4,7 +4,7 @@
 
 - Feat: introduce `Type::Any` and `CallableSignature::is_variadic` to model variadic functions (e.g. `fmt.println`)
 - Feat: resolve top-level callable symbols via new `TypeEnv::functions` table (F-024)
-- Feat: register stdlib signatures for all 19 modules — `fmt`, `io`, `math`, `sync`, `json`, `time`, `os`, `crypto`, `collections`, `strings`, `path`, `net`, `random`, `convert`, `encoding`, `regexp`, `debug`, `logger`, `runtime`
+- Feat: register stdlib signatures for all 19 modules — `fmt`, `IO`, `List`, `Map`, `Set`, `Option`, `Math`, `String`, `Env`, `Path`, `JSON`, `DateTime`, `Random`, `Encoding`, `Sort`, `Process`, `Task`, `Channel`, `Sync`
 - Feat: `resolve_stdlib_imports` injects real signatures from the registry, replacing the previous dummy `(params=[], returns=String)`
 - Feat: `MemberAccess` returns `Type::Function` for method references so callee resolution works for `Account.open(...)`
 - Feat: `Call` expression type checking — arity mismatch (`TANGLE_ARITY_MISMATCH`) and parameter type mismatch (`TANGLE_TYPE_ERROR`) diagnostics
