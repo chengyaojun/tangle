@@ -174,10 +174,10 @@ fn flatten_headings(headings: &[TangleHeading]) -> Vec<&TangleHeading> {
 /// Check if a heading (by id) is a direct child of a Type heading.
 fn is_child_of_type_heading(heading_id: &str, headings: &[TangleHeading]) -> bool {
     for h in headings {
-        if h.role == HeadingRole::Type {
-            if h.children.iter().any(|c| c.id == heading_id) {
-                return true;
-            }
+        if h.role == HeadingRole::Type
+            && h.children.iter().any(|c| c.id == heading_id)
+        {
+            return true;
         }
         if is_child_of_type_heading(heading_id, &h.children) {
             return true;
