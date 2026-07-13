@@ -119,6 +119,7 @@ mod tests {
             kind,
             label: label.to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -129,6 +130,7 @@ mod tests {
             kind: IREdgeKind::Control,
             guard: None,
             source_span: None,
+            priority: None, style: None,
         }
     }
 

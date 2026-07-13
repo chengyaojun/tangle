@@ -9,6 +9,7 @@ pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeI
         kind: IRNodeKind::Decision,
         label: "tree.entry".into(),
         source_span: None, source_text: None,
+        group: None, style: None,
     });
 
     let items: Vec<String> = list_markdown
@@ -34,6 +35,7 @@ pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeI
             kind: IRNodeKind::Decision,
             label: item.clone(),
             source_span: None, source_text: None,
+            group: None, style: None,
         });
         graph.edges.push(IREdge {
             from: prev_id,
@@ -41,6 +43,7 @@ pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeI
             kind: IREdgeKind::Condition,
             guard: Some(item),
             source_span: None,
+            priority: None, style: None,
         });
         prev_id = node_id;
     }

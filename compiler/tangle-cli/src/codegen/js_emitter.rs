@@ -347,6 +347,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: "entry".to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -356,6 +357,7 @@ mod tests {
             kind: IRNodeKind::Terminal,
             label: "done".to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -365,6 +367,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: label.to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -375,6 +378,7 @@ mod tests {
             kind: IREdgeKind::Control,
             guard: None,
             source_span: None,
+            priority: None, style: None,
         }
     }
 
@@ -553,6 +557,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: "return".to_string(),
             source_span: None, source_text: Some(src.to_string()),
+            group: None, style: None,
         }
     }
 
@@ -583,11 +588,13 @@ mod tests {
                     id: "n0".to_string(), kind: IRNodeKind::Compute,
                     label: "toggle.entry".to_string(),
                     source_span: None, source_text: None,
+                    group: None, style: None,
                 },
                 IRNode {
                     id: "n1".to_string(), kind: IRNodeKind::Compute,
                     label: "flag = true".to_string(),
                     source_span: None, source_text: None,
+                    group: None, style: None,
                 },
             ],
             edges: vec![make_edge("n0", "n1")],

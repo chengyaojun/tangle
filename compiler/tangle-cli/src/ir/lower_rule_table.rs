@@ -9,6 +9,7 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
         kind: IRNodeKind::Decision,
         label: "table.entry".into(),
         source_span: None, source_text: None,
+        group: None, style: None,
     });
 
     let lines: Vec<&str> = table_markdown
@@ -67,6 +68,7 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
             kind: IRNodeKind::Action,
             label: action,
             source_span: None, source_text: None,
+            group: None, style: None,
         });
         graph.edges.push(IREdge {
             from: entry_id.clone(),
@@ -74,6 +76,7 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
             kind: IREdgeKind::Condition,
             guard,
             source_span: None,
+            priority: None, style: None,
         });
     }
 

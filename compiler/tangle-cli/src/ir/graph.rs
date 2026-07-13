@@ -18,6 +18,9 @@ pub enum IREdgeKind {
     Control,
     Condition,
     Error,
+    Dashed,
+    Thick,
+    Crossed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,6 +32,10 @@ pub struct IRNode {
     pub source_span: Option<SourceSpan>,
     #[serde(default)]
     pub source_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,6 +46,10 @@ pub struct IREdge {
     pub kind: IREdgeKind,
     pub guard: Option<String>,
     pub source_span: Option<SourceSpan>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -112,5 +123,63 @@ pub fn create_graph(entry_node_id: String) -> RuleGraph {
         imported_stdlib: vec![],
         stdlib_imports: vec![],
         functions: vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ir_node_has_group_and_style_fields() {
+        let node = IRNode {
+            id: "n0".into(),
+            kind: IRNodeKind::Action,
+            label: "test".into(),
+            source_span: None,
+            source_text: None,
+            group: Some("Approval".into()),
+            style: Some("className".into()),
+        };
+        assert_eq!(node.group.as_deref(), Some("Approval"));
+        assert_eq!(node.style.as_deref(), Some("className"));
+    }
+
+    #[test]
+    fn ir_edge_has_priority_and_style_fields() {
+        let edge = IREdge {
+            from: "n0".into(),
+            to: "n1".into(),
+            kind: IREdgeKind::Condition,
+            guard: Some("x = 1".into()),
+            source_span: None,
+            priority: Some(0),
+            style: Some("stroke:#ff3".into()),
+        };
+        assert_eq!(edge.priority, Some(0));
+        assert_eq!(edge.style.as_deref(), Some("stroke:#ff3"));
+    }
+
+    #[test]
+    fn ir_edge_kind_has_new_variants() {
+        assert_eq!(IREdgeKind::Dashed, IREdgeKind::Dashed);
+        assert_eq!(IREdgeKind::Thick, IREdgeKind::Thick);
+        assert_eq!(IREdgeKind::Crossed, IREdgeKind::Crossed);
+    }
+
+    #[test]
+    fn ir_node_serializes_new_fields() {
+        let node = IRNode {
+            id: "n0".into(),
+            kind: IRNodeKind::Action,
+            label: "test".into(),
+            source_span: None,
+            source_text: None,
+            group: Some("G1".into()),
+            style: None,
+        };
+        let json = serde_json::to_string(&node).unwrap();
+        assert!(json.contains("\"group\":\"G1\""));
+        assert!(!json.contains("\"style\""));
     }
 }

@@ -48,6 +48,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         g.nodes.push(IRNode {
             id: entry_id.clone(), kind: IRNodeKind::Terminal,
             label: "empty".into(), source_span: None, source_text: None,
+            group: None, style: None,
         });
         g
     });
@@ -151,6 +152,7 @@ fn lower_function_body(
     let mut nodes: Vec<IRNode> = vec![IRNode {
         id: entry_id.clone(), kind: IRNodeKind::Compute,
         label: "entry".into(), source_span: None, source_text: None,
+        group: None, style: None,
     }];
     let mut edges: Vec<IREdge> = vec![];
     let mut prev_id = entry_id.clone();
@@ -168,10 +170,12 @@ fn lower_function_body(
             nodes.push(IRNode {
                 id: node_id.clone(), kind: node_kind, label,
                 source_span: None, source_text: Some(src),
+                group: None, style: None,
             });
             edges.push(IREdge {
                 from: prev_id, to: node_id.clone(), kind: IREdgeKind::Control,
                 guard: None, source_span: None,
+                priority: None, style: None,
             });
             prev_id = node_id;
         }
@@ -181,10 +185,12 @@ fn lower_function_body(
     nodes.push(IRNode {
         id: terminal_id.clone(), kind: IRNodeKind::Terminal,
         label: "exit".into(), source_span: None, source_text: None,
+        group: None, style: None,
     });
     edges.push(IREdge {
         from: prev_id, to: terminal_id, kind: IREdgeKind::Control,
         guard: None, source_span: None,
+        priority: None, style: None,
     });
 
     (nodes, edges, entry_id, vec![])
