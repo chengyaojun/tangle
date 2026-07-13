@@ -65,7 +65,7 @@ compile_to_ir.rs (dispatch，不动)
 语义由图拓扑隐式编码，IR 结构改动最小：
 
 - **Tree**: OR = 从 entry 分出多条 Condition 边（首匹配胜出）；AND = 路径内顺序 Decision 节点链；Action = 路径末端 Action 节点
-- **Table**: 优先级 = entry 出边顺序（第一条边最高优先级）；重叠 = 编译期诊断
+- **Table**: 优先级 = entry 出边的 `priority` 字段（第一条边 priority=0，最高优先级）；重叠 = 编译期诊断
 - **Mermaid**: `IRNode` 加 `group` 字段保留 subgraph 分组；新增 `IREdgeKind` 变体映射多边类型；样式作为节点/边的可选元数据
 
 **不引入**显式 `Or`/`And`/`Priority` 节点类型（YAGNI——codegen 消费前是冗余的）；**不引入**分层 IR（无第二层消费者）。
@@ -231,7 +231,7 @@ entry(Decision) ──[priority:0, Income=high AND Credit=good]──> n1(Action
 
 ```rust
 fn rows_overlap(row_a: &[String], row_b: &[String]) -> bool {
-    row_a.conditions.iter().zip(row_b.conditions.iter())
+    row_a.iter().zip(row_b.iter())
         .all(|(a, b)| a == "-" || b == "-" || a == b)
 }
 ```
