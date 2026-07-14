@@ -1,6 +1,12 @@
 use crate::ir::graph::*;
+use crate::model::{SourceSpan, TangleDiagnostic};
 
-pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
+pub fn lower_rule_tree(
+    list_markdown: &str,
+    _file: &str,
+    id_gen: &mut FreshNodeId,
+) -> (RuleGraph, Vec<TangleDiagnostic>) {
+    let mut diagnostics = vec![];
     let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
@@ -8,47 +14,116 @@ pub fn lower_rule_tree(list_markdown: &str, _file: &str, id_gen: &mut FreshNodeI
         id: entry_id.clone(),
         kind: IRNodeKind::Decision,
         label: "tree.entry".into(),
-        source_span: None, source_text: None,
-        group: None, style: None,
+        source_span: None,
+        source_text: None,
+        group: None,
+        style: None,
     });
 
-    let items: Vec<String> = list_markdown
-        .lines()
-        .filter(|l| {
-            let t = l.trim_start();
-            t.starts_with("* ") || t.starts_with("- ")
-        })
-        .map(|l| {
-            l.trim_start()
-                .trim_start_matches("* ")
-                .trim_start_matches("- ")
-                .trim()
-                .to_string()
-        })
-        .collect();
+    let roots = parse_list_to_tree(list_markdown);
 
-    let mut prev_id = entry_id;
-    for item in items {
-        let node_id = id_gen.fresh();
-        graph.nodes.push(IRNode {
-            id: node_id.clone(),
-            kind: IRNodeKind::Decision,
-            label: item.clone(),
-            source_span: None, source_text: None,
-            group: None, style: None,
-        });
-        graph.edges.push(IREdge {
-            from: prev_id,
-            to: node_id.clone(),
-            kind: IREdgeKind::Condition,
-            guard: Some(item),
-            source_span: None,
-            priority: None, style: None,
-        });
-        prev_id = node_id;
+    for branch in &roots {
+        if branch.children.is_empty() {
+            diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_RULE_EMPTY_BRANCH".into(),
+                message: format!("branch '{}' has no conditions or action", branch.text),
+                span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
+            });
+            continue;
+        }
+
+        let has_action = branch.children.iter().any(|c| c.text.starts_with("Action:"));
+        if !has_action {
+            diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_RULE_NO_ACTION".into(),
+                message: format!("branch '{}' has no Action: marker", branch.text),
+                span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
+            });
+        }
+
+        let conditions: Vec<&ListNode> = branch.children.iter()
+            .filter(|c| !c.text.starts_with("Action:"))
+            .collect();
+
+        let first_cond_id = if conditions.is_empty() {
+            None
+        } else {
+            let cond = conditions[0];
+            let node_id = id_gen.fresh();
+            graph.nodes.push(IRNode {
+                id: node_id.clone(),
+                kind: IRNodeKind::Decision,
+                label: cond.text.clone(),
+                source_span: None,
+                source_text: None,
+                group: None,
+                style: None,
+            });
+            graph.edges.push(IREdge {
+                from: entry_id.clone(),
+                to: node_id.clone(),
+                kind: IREdgeKind::Condition,
+                guard: Some(cond.text.clone()),
+                source_span: None,
+                priority: None,
+                style: None,
+            });
+            Some(node_id)
+        };
+
+        let mut prev_id = first_cond_id;
+        for cond in conditions.iter().skip(1) {
+            let node_id = id_gen.fresh();
+            graph.nodes.push(IRNode {
+                id: node_id.clone(),
+                kind: IRNodeKind::Decision,
+                label: cond.text.clone(),
+                source_span: None,
+                source_text: None,
+                group: None,
+                style: None,
+            });
+            let from = prev_id.clone().unwrap_or_else(|| entry_id.clone());
+            graph.edges.push(IREdge {
+                from,
+                to: node_id.clone(),
+                kind: IREdgeKind::Condition,
+                guard: Some(cond.text.clone()),
+                source_span: None,
+                priority: None,
+                style: None,
+            });
+            prev_id = Some(node_id);
+        }
+
+        // Action node at end of branch
+        for child in &branch.children {
+            if let Some(action_label) = child.text.strip_prefix("Action:") {
+                let action_id = id_gen.fresh();
+                graph.nodes.push(IRNode {
+                    id: action_id.clone(),
+                    kind: IRNodeKind::Action,
+                    label: action_label.trim().to_string(),
+                    source_span: None,
+                    source_text: None,
+                    group: None,
+                    style: None,
+                });
+                let from = prev_id.clone().unwrap_or_else(|| entry_id.clone());
+                graph.edges.push(IREdge {
+                    from,
+                    to: action_id,
+                    kind: IREdgeKind::Control,
+                    guard: None,
+                    source_span: None,
+                    priority: None,
+                    style: None,
+                });
+            }
+        }
     }
 
-    graph
+    (graph, diagnostics)
 }
 
 /// 缩进感知的列表树节点
@@ -201,5 +276,59 @@ More text
         assert_eq!(roots[0].text, "Branch A");
         assert_eq!(roots[0].children.len(), 1);
         assert_eq!(roots[0].children[0].text, "Cond 1");
+    }
+
+    #[test]
+    fn lower_tree_dnf_basic() {
+        let md = "\
+* Branch A
+    * Income: high
+    * Credit: good
+    * Action: approve
+* Branch B
+    * Income: low
+    * Action: reject
+";
+        let mut id_gen = FreshNodeId::new();
+        let (graph, diags) = lower_rule_tree(md, "test.md", &mut id_gen);
+
+        // entry + [Income:high, Credit:good, Action:approve] + [Income:low, Action:reject]
+        // = 1 + 3 + 2 = 6 nodes
+        assert_eq!(graph.nodes.len(), 6);
+        // edges: entry→Income:high, Income:high→Credit:good, Credit:good→Action:approve
+        //        entry→Income:low, Income:low→Action:reject = 5 edges
+        assert_eq!(graph.edges.len(), 5);
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn lower_tree_no_action_warns() {
+        let md = "\
+* Branch A
+    * Income: high
+";
+        let mut id_gen = FreshNodeId::new();
+        let (_graph, diags) = lower_rule_tree(md, "test.md", &mut id_gen);
+        assert!(diags.iter().any(|d| d.code == "TANGLE_RULE_NO_ACTION"));
+    }
+
+    #[test]
+    fn lower_tree_empty_branch_warns() {
+        let md = "* Branch A\n";
+        let mut id_gen = FreshNodeId::new();
+        let (_graph, diags) = lower_rule_tree(md, "test.md", &mut id_gen);
+        assert!(diags.iter().any(|d| d.code == "TANGLE_RULE_EMPTY_BRANCH"));
+    }
+
+    #[test]
+    fn lower_tree_action_node_kind() {
+        let md = "\
+* Branch A
+    * Action: approve
+";
+        let mut id_gen = FreshNodeId::new();
+        let (graph, _diags) = lower_rule_tree(md, "test.md", &mut id_gen);
+        let action_node = graph.nodes.iter().find(|n| n.label == "approve").unwrap();
+        assert_eq!(action_node.kind, IRNodeKind::Action);
     }
 }

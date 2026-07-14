@@ -5,6 +5,7 @@
 * Core conditions:
     * Income check: true
     * Credit check: true
+    * Action: approve
 * Risk mitigation:
     * Collateral: true
-* Result: true
+    * Action: review

@@ -30,7 +30,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
 
     // Lower rule blocks from headings
     let mut rule_graphs: Vec<RuleGraph> = vec![];
-    collect_rule_graphs(&checked.headings, &checked.file, &mut id_gen, &mut rule_graphs);
+    collect_rule_graphs(&checked.headings, &checked.file, &mut id_gen, &mut rule_graphs, &mut diagnostics);
     for sub_graph in rule_graphs {
         match &mut merged_graph {
             None => merged_graph = Some(sub_graph),
@@ -86,18 +86,26 @@ fn collect_rule_graphs(
     file: &str,
     id_gen: &mut FreshNodeId,
     out: &mut Vec<RuleGraph>,
+    diagnostics: &mut Vec<TangleDiagnostic>,
 ) {
     for h in headings {
         if let Some(ref rule) = h.rule {
-            let sub_graph = match rule.kind {
-                RuleKind::Flow => lower_rule_flow(&rule.source, file, id_gen),
-                RuleKind::Table => lower_rule_table(&rule.source, file, id_gen),
+            let (sub_graph, rule_diags) = match rule.kind {
+                RuleKind::Flow => {
+                    (lower_rule_flow(&rule.source, file, id_gen), vec![])
+                }
+                RuleKind::Table => {
+                    (lower_rule_table(&rule.source, file, id_gen), vec![])
+                }
                 RuleKind::Tree => lower_rule_tree(&rule.source, file, id_gen),
-                RuleKind::Toggle => lower_rule_toggle(&rule.source, file, id_gen),
+                RuleKind::Toggle => {
+                    (lower_rule_toggle(&rule.source, file, id_gen), vec![])
+                }
             };
             out.push(sub_graph);
+            diagnostics.extend(rule_diags);
         }
-        collect_rule_graphs(&h.children, file, id_gen, out);
+        collect_rule_graphs(&h.children, file, id_gen, out, diagnostics);
     }
 }
 
