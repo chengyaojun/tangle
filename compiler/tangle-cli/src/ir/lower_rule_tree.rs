@@ -27,6 +27,7 @@ pub fn lower_rule_tree(
             diagnostics.push(TangleDiagnostic {
                 code: "TANGLE_RULE_EMPTY_BRANCH".into(),
                 message: format!("branch '{}' has no conditions or action", branch.text),
+                // TODO: track line numbers through parse_list_to_tree to provide accurate spans
                 span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
             });
             continue;
@@ -37,6 +38,7 @@ pub fn lower_rule_tree(
             diagnostics.push(TangleDiagnostic {
                 code: "TANGLE_RULE_NO_ACTION".into(),
                 message: format!("branch '{}' has no Action: marker", branch.text),
+                // TODO: track line numbers through parse_list_to_tree to provide accurate spans
                 span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
             });
         }
@@ -83,7 +85,7 @@ pub fn lower_rule_tree(
                 group: None,
                 style: None,
             });
-            let from = prev_id.clone().unwrap_or_else(|| entry_id.clone());
+            let from = prev_id.clone().expect("first_cond_id guaranteed when conditions.len() >= 2");
             graph.edges.push(IREdge {
                 from,
                 to: node_id.clone(),
@@ -96,7 +98,9 @@ pub fn lower_rule_tree(
             prev_id = Some(node_id);
         }
 
-        // Action node at end of branch
+        // Multiple Action: markers in a branch create parallel action nodes
+        // (all connected from the same prev_id). This is intentional for
+        // multi-action semantics.
         for child in &branch.children {
             if let Some(action_label) = child.text.strip_prefix("Action:") {
                 let action_id = id_gen.fresh();
