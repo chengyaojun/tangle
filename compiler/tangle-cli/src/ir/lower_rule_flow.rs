@@ -7,6 +7,12 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
     let mut edges: Vec<IREdge> = vec![];
     let mut entry_id: Option<String> = None;
 
+    let mut subgraph_stack: Vec<String> = vec![];
+    let mut edge_styles: HashMap<usize, String> = HashMap::new();
+    let mut node_styles: HashMap<String, String> = HashMap::new();
+    let mut class_defs: HashMap<String, String> = HashMap::new();
+    let mut class_assignments: HashMap<String, String> = HashMap::new();
+
     for line in mermaid_source.lines() {
         let line = line.trim();
         // Skip empty lines, graph declarations, and fence markers
@@ -18,10 +24,80 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
             continue;
         }
 
+        // subgraph start: "subgraph Approval" -> push first whitespace-delimited token
+        if line.starts_with("subgraph ") {
+            let name = line
+                .trim_start_matches("subgraph ")
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string();
+            subgraph_stack.push(name);
+            continue;
+        }
+
+        // subgraph end
+        if line == "end" {
+            subgraph_stack.pop();
+            continue;
+        }
+
+        // classDef <name> <style-def>
+        if line.starts_with("classDef ") {
+            let rest = line.trim_start_matches("classDef ");
+            if let Some(sp) = rest.find(char::is_whitespace) {
+                let class_name = rest[..sp].to_string();
+                let style_def = rest[sp..].trim().to_string();
+                class_defs.insert(class_name, style_def);
+            }
+            continue;
+        }
+
+        // class assignment: "class A,B className"
+        if line.starts_with("class ") {
+            let rest = line.trim_start_matches("class ");
+            if let Some(sp) = rest.find(char::is_whitespace) {
+                let node_ids = rest[..sp].split(',').map(|s| s.trim().to_string());
+                let class_name = rest[sp..].trim().to_string();
+                for nid in node_ids {
+                    class_assignments.insert(nid, class_name.clone());
+                }
+            }
+            continue;
+        }
+
+        // style <nodeId> <style-def>
+        if line.starts_with("style ") {
+            let rest = line.trim_start_matches("style ");
+            if let Some(sp) = rest.find(char::is_whitespace) {
+                let node_id = rest[..sp].to_string();
+                let style_def = rest[sp..].trim().to_string();
+                node_styles.insert(node_id, style_def);
+            }
+            continue;
+        }
+
+        // linkStyle <idx> <style-def>
+        if line.starts_with("linkStyle ") {
+            let rest = line.trim_start_matches("linkStyle ");
+            if let Some(sp) = rest.find(char::is_whitespace) {
+                let idx: usize = rest[..sp].parse().unwrap_or(0);
+                let style_def = rest[sp..].trim().to_string();
+                edge_styles.insert(idx, style_def);
+            }
+            continue;
+        }
+
+        let current_group = subgraph_stack.last().cloned();
+
         // Try standalone node declaration: A[Label] or B(Label) or C{Label}
         if let Some(caps) = parse_node_decl(line) {
             let (mermaid_id, label, is_error) = caps;
-            register_node(&mermaid_id, label, is_error, &mut node_map, &mut nodes, &mut entry_id, id_gen);
+            register_node(
+                &mermaid_id, label, is_error, current_group,
+                &mut node_map, &mut nodes, &mut entry_id, id_gen,
+            );
             continue;
         }
 
@@ -29,12 +105,18 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         if let Some((from_part, guard, to_part)) = parse_edge_parts(line) {
             // Extract and register nodes from inline declarations
             if let Some((from_id, from_label)) = extract_inline_node(&from_part) {
-                register_node(&from_id, from_label, false, &mut node_map, &mut nodes, &mut entry_id, id_gen);
+                register_node(
+                    &from_id, from_label, false, current_group.clone(),
+                    &mut node_map, &mut nodes, &mut entry_id, id_gen,
+                );
             }
             if let Some((to_id, to_label)) = extract_inline_node(&to_part) {
                 let is_error = to_label.to_lowercase().starts_with("error:")
                     || to_label.starts_with("错误:");
-                register_node(&to_id, to_label, is_error, &mut node_map, &mut nodes, &mut entry_id, id_gen);
+                register_node(
+                    &to_id, to_label, is_error, current_group,
+                    &mut node_map, &mut nodes, &mut entry_id, id_gen,
+                );
             }
 
             // Resolve edge endpoints (strip labels if present)
@@ -59,6 +141,30 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         }
     }
 
+    // Apply node styles (by mermaid id)
+    for (mermaid_id, style) in &node_styles {
+        if let Some(ir_id) = node_map.get(mermaid_id) {
+            if let Some(node) = nodes.iter_mut().find(|n| &n.id == ir_id) {
+                node.style = Some(style.clone());
+            }
+        }
+    }
+    // Apply class assignments (store class name as style; class_defs holds the
+    // resolved style text for downstream renderers).
+    for (mermaid_id, class_name) in &class_assignments {
+        if let Some(ir_id) = node_map.get(mermaid_id) {
+            if let Some(node) = nodes.iter_mut().find(|n| &n.id == ir_id) {
+                node.style = Some(class_name.clone());
+            }
+        }
+    }
+    // Apply edge styles (by index)
+    for (idx, style) in &edge_styles {
+        if *idx < edges.len() {
+            edges[*idx].style = Some(style.clone());
+        }
+    }
+
     let entry_node_id = entry_id.unwrap_or_else(|| {
         let id = id_gen.fresh();
         nodes.push(IRNode {
@@ -75,7 +181,7 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
 }
 
 fn register_node(
-    mermaid_id: &str, label: String, is_error: bool,
+    mermaid_id: &str, label: String, is_error: bool, group: Option<String>,
     node_map: &mut HashMap<String, String>, nodes: &mut Vec<IRNode>,
     entry_id: &mut Option<String>, id_gen: &mut FreshNodeId,
 ) {
@@ -86,7 +192,7 @@ fn register_node(
     if entry_id.is_none() {
         *entry_id = Some(node_id.clone());
     }
-    nodes.push(IRNode { id: node_id, kind, label, source_span: None, source_text: None, group: None, style: None });
+    nodes.push(IRNode { id: node_id, kind, label, source_span: None, source_text: None, group, style: None });
 }
 
 /// Parse standalone node declaration: A[Label] -> (id, label, is_error)
@@ -154,5 +260,46 @@ fn parse_edge_parts(line: &str) -> Option<(String, Option<String>, String)> {
     } else {
         let to_part = after_arrow.trim().to_string();
         Some((from_part, None, to_part))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flow_subgraph_assigns_group() {
+        let md = "\
+graph TD
+    A[Start] --> B{Decision}
+    subgraph Approval
+        B -->|yes| C[Approve]
+    end
+    subgraph Rejection
+        B -->|no| E[Reject]
+    end
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+
+        let node_c = graph.nodes.iter().find(|n| n.label == "Approve").unwrap();
+        assert_eq!(node_c.group.as_deref(), Some("Approval"));
+        let node_e = graph.nodes.iter().find(|n| n.label == "Reject").unwrap();
+        assert_eq!(node_e.group.as_deref(), Some("Rejection"));
+        let node_a = graph.nodes.iter().find(|n| n.label == "Start").unwrap();
+        assert!(node_a.group.is_none());
+    }
+
+    #[test]
+    fn flow_no_subgraph_group_none() {
+        let md = "\
+graph TD
+    A[Start] --> B[End]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        for node in &graph.nodes {
+            assert!(node.group.is_none());
+        }
     }
 }
