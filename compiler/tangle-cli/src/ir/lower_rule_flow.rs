@@ -28,7 +28,6 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         if line.starts_with("subgraph ") {
             let name = line
                 .trim_start_matches("subgraph ")
-                .trim()
                 .split_whitespace()
                 .next()
                 .unwrap_or("")
@@ -82,9 +81,12 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         if line.starts_with("linkStyle ") {
             let rest = line.trim_start_matches("linkStyle ");
             if let Some(sp) = rest.find(char::is_whitespace) {
-                let idx: usize = rest[..sp].parse().unwrap_or(0);
-                let style_def = rest[sp..].trim().to_string();
-                edge_styles.insert(idx, style_def);
+                // Parse failure: skip the line entirely (do NOT default to 0,
+                // which would wrongly style the first edge).
+                if let Ok(idx) = rest[..sp].parse::<usize>() {
+                    let style_def = rest[sp..].trim().to_string();
+                    edge_styles.insert(idx, style_def);
+                }
             }
             continue;
         }
@@ -149,12 +151,17 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
             }
         }
     }
-    // Apply class assignments (store class name as style; class_defs holds the
-    // resolved style text for downstream renderers).
+    // Apply class assignments — use class_defs resolved style text so that
+    // node.style carries the parsed style (e.g. "fill:#ff0,stroke:#f00") rather
+    // than the raw class name. Falls back to the class name if undefined.
     for (mermaid_id, class_name) in &class_assignments {
         if let Some(ir_id) = node_map.get(mermaid_id) {
             if let Some(node) = nodes.iter_mut().find(|n| &n.id == ir_id) {
-                node.style = Some(class_name.clone());
+                let style = class_defs
+                    .get(class_name)
+                    .cloned()
+                    .unwrap_or_else(|| class_name.clone());
+                node.style = Some(style);
             }
         }
     }
@@ -180,6 +187,7 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
     RuleGraph { nodes, edges, error_edges: vec![], entry_node_id, imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![] }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_node(
     mermaid_id: &str, label: String, is_error: bool, group: Option<String>,
     node_map: &mut HashMap<String, String>, nodes: &mut Vec<IRNode>,
@@ -301,5 +309,32 @@ graph TD
         for node in &graph.nodes {
             assert!(node.group.is_none());
         }
+    }
+
+    #[test]
+    fn flow_class_assigns_style() {
+        let md = "\
+graph TD
+    A[Start] --> B[End]
+    classDef highlight fill:#ff0,stroke:#f00
+    class B highlight
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let node_b = graph.nodes.iter().find(|n| n.label == "End").unwrap();
+        assert_eq!(node_b.style.as_deref(), Some("fill:#ff0,stroke:#f00"));
+    }
+
+    #[test]
+    fn flow_style_assigns_to_node() {
+        let md = "\
+graph TD
+    A[Start] --> B[End]
+    style B fill:#cfc
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let node_b = graph.nodes.iter().find(|n| n.label == "End").unwrap();
+        assert_eq!(node_b.style.as_deref(), Some("fill:#cfc"));
     }
 }
