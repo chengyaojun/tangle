@@ -93,11 +93,10 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
 
         let current_group = subgraph_stack.last().cloned();
 
-        // Try standalone node declaration: A[Label] or B(Label) or C{Label}
-        if let Some(caps) = parse_node_decl(line) {
-            let (mermaid_id, label, is_error) = caps;
+        // Try standalone node declaration: A[Label] or B(Label) or C{Label} or D((Label))
+        if let Some((mermaid_id, label, is_error, shape)) = parse_node_decl(line) {
             register_node(
-                &mermaid_id, label, is_error, current_group,
+                &mermaid_id, label, is_error, current_group, shape,
                 &mut node_map, &mut nodes, &mut entry_id, id_gen,
             );
             continue;
@@ -107,16 +106,18 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         if let Some((from_part, guard, to_part, edge_kind)) = parse_edge_parts_v2(line) {
             // Extract and register nodes from inline declarations
             if let Some((from_id, from_label)) = extract_inline_node(&from_part) {
+                let from_shape = infer_inline_shape(&from_part);
                 register_node(
-                    &from_id, from_label, false, current_group.clone(),
+                    &from_id, from_label, false, current_group.clone(), from_shape,
                     &mut node_map, &mut nodes, &mut entry_id, id_gen,
                 );
             }
             if let Some((to_id, to_label)) = extract_inline_node(&to_part) {
                 let is_error = to_label.to_lowercase().starts_with("error:")
                     || to_label.starts_with("错误:");
+                let to_shape = infer_inline_shape(&to_part);
                 register_node(
-                    &to_id, to_label, is_error, current_group,
+                    &to_id, to_label, is_error, current_group, to_shape,
                     &mut node_map, &mut nodes, &mut entry_id, id_gen,
                 );
             }
@@ -192,12 +193,13 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
 #[allow(clippy::too_many_arguments)]
 fn register_node(
     mermaid_id: &str, label: String, is_error: bool, group: Option<String>,
+    shape: NodeShape,
     node_map: &mut HashMap<String, String>, nodes: &mut Vec<IRNode>,
     entry_id: &mut Option<String>, id_gen: &mut FreshNodeId,
 ) {
     if node_map.contains_key(mermaid_id) { return; }
     let node_id = id_gen.fresh();
-    let kind = if is_error { IRNodeKind::ErrorTerminal } else { IRNodeKind::Action };
+    let kind = shape_to_kind(shape, is_error);
     node_map.insert(mermaid_id.to_string(), node_id.clone());
     if entry_id.is_none() {
         *entry_id = Some(node_id.clone());
@@ -205,34 +207,77 @@ fn register_node(
     nodes.push(IRNode { id: node_id, kind, label, source_span: None, source_text: None, group, style: None });
 }
 
-/// Parse standalone node declaration: A[Label] -> (id, label, is_error)
-fn parse_node_decl(line: &str) -> Option<(String, String, bool)> {
+/// Mermaid node shape, used to infer `IRNodeKind`.
+#[derive(Debug, Clone, Copy)]
+enum NodeShape {
+    Rect,    // [Label] -> Action
+    Rounded, // (Label) -> Action
+    Diamond, // {Label} -> Decision
+    Circle,  // ((Label)) -> Terminal
+}
+
+fn shape_to_kind(shape: NodeShape, is_error: bool) -> IRNodeKind {
+    if is_error { return IRNodeKind::ErrorTerminal; }
+    match shape {
+        NodeShape::Diamond => IRNodeKind::Decision,
+        NodeShape::Circle => IRNodeKind::Terminal,
+        _ => IRNodeKind::Action,
+    }
+}
+
+/// Infer `NodeShape` from an inline edge part such as `A[Label]` or `A((Label))`.
+/// Simplified: `((` -> Circle, `{` -> Diamond, otherwise default Rect (Rounded
+/// also maps to Action, so it is folded into the Rect default).
+fn infer_inline_shape(part: &str) -> NodeShape {
+    if part.contains("((") { NodeShape::Circle }
+    else if part.contains('{') { NodeShape::Diamond }
+    else { NodeShape::Rect }
+}
+
+/// Parse standalone node declaration: A[Label] -> (id, label, is_error, shape)
+fn parse_node_decl(line: &str) -> Option<(String, String, bool, NodeShape)> {
     let trimmed = line.trim();
     let id_end = trimmed.find(|c: char| !c.is_ascii_alphanumeric() && c != '_')?;
     let mermaid_id = trimmed[..id_end].to_string();
     let rest = trimmed[id_end..].trim_start();
 
-    let close = if rest.starts_with('[') { ']' }
-    else if rest.starts_with('(') { ')' }
-    else if rest.starts_with('{') { '}' }
-    else { return None; };
-
-    if !rest.ends_with(close) { return None; }
-    let label = rest[1..rest.len()-1].trim().to_string();
-    let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
-
     // Verify this is a standalone node (no edge on the same line).
     // Must check all four edge operators: `-.->` before `-->` (substring overlap),
     // plus `==>` and `--x`.
-    if trimmed.contains("-.->")
+    if trimmed.contains("-->")
+        || trimmed.contains("-.->")
         || trimmed.contains("==>")
         || trimmed.contains("--x")
-        || trimmed.contains("-->")
     {
         return None;
     }
 
-    Some((mermaid_id, label, is_error))
+    // Circle: ((Label))
+    if rest.starts_with("((") && rest.ends_with("))") {
+        let label = rest[2..rest.len() - 2].trim().to_string();
+        let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
+        return Some((mermaid_id, label, is_error, NodeShape::Circle));
+    }
+    // Rect: [Label]
+    if rest.starts_with('[') && rest.ends_with(']') {
+        let label = rest[1..rest.len() - 1].trim().to_string();
+        let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
+        return Some((mermaid_id, label, is_error, NodeShape::Rect));
+    }
+    // Rounded: (Label)
+    if rest.starts_with('(') && rest.ends_with(')') {
+        let label = rest[1..rest.len() - 1].trim().to_string();
+        let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
+        return Some((mermaid_id, label, is_error, NodeShape::Rounded));
+    }
+    // Diamond: {Label}
+    if rest.starts_with('{') && rest.ends_with('}') {
+        let label = rest[1..rest.len() - 1].trim().to_string();
+        let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
+        return Some((mermaid_id, label, is_error, NodeShape::Diamond));
+    }
+
+    None
 }
 
 /// Extract node ID from a part like "A" or "A[Label]" -> "A"
@@ -252,13 +297,15 @@ fn extract_inline_node(part: &str) -> Option<(String, String)> {
     let id = part[..id_end].to_string();
     let rest = part[id_end..].trim_start();
 
-    let close = if rest.starts_with('[') { ']' }
-    else if rest.starts_with('(') { ')' }
-    else if rest.starts_with('{') { '}' }
+    let (open, close) = if rest.starts_with("((") { ("((", "))") }
+    else if rest.starts_with('[') { ("[", "]") }
+    else if rest.starts_with('(') { ("(", ")") }
+    else if rest.starts_with('{') { ("{", "}") }
     else { return None; };
 
     let close_pos = rest.find(close)?;
-    let label = rest[1..close_pos].trim().to_string();
+    let inner_start = open.len();
+    let label = rest[inner_start..close_pos].trim().to_string();
     Some((id, label))
 }
 
@@ -410,5 +457,32 @@ graph TD
         let edge = &graph.edges[0];
         assert_eq!(edge.kind, IREdgeKind::Condition); // guard present -> Condition
         assert_eq!(edge.guard.as_deref(), Some("async"));
+    }
+
+    #[test]
+    fn flow_diamond_shape_maps_to_decision() {
+        let md = "graph TD\n    A{Is valid?}\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let node = graph.nodes.iter().find(|n| n.label == "Is valid?").unwrap();
+        assert_eq!(node.kind, IRNodeKind::Decision);
+    }
+
+    #[test]
+    fn flow_circle_shape_maps_to_terminal() {
+        let md = "graph TD\n    A((Start))\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let node = &graph.nodes[0];
+        assert_eq!(node.kind, IRNodeKind::Terminal);
+    }
+
+    #[test]
+    fn flow_rect_shape_maps_to_action() {
+        let md = "graph TD\n    A[Do something]\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let node = &graph.nodes[0];
+        assert_eq!(node.kind, IRNodeKind::Action);
     }
 }
