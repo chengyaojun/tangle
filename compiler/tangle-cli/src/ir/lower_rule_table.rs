@@ -11,7 +11,7 @@ pub fn rows_overlap(row_a: &[String], row_b: &[String]) -> bool {
 
 pub fn lower_rule_table_with_diagnostics(
     table_markdown: &str,
-    _file: &str,
+    file: &str,
     id_gen: &mut FreshNodeId,
 ) -> (RuleGraph, Vec<TangleDiagnostic>) {
     let mut diagnostics = vec![];
@@ -56,11 +56,18 @@ pub fn lower_rule_table_with_diagnostics(
         if cells.len() < 2 {
             continue;
         }
-        let conds: Vec<String> = cells
-            .iter()
-            .take(condition_count.min(cells.len().saturating_sub(1)))
-            .map(|c| c.trim().to_string())
-            .collect();
+        let conds: Vec<String> = {
+            let mut c: Vec<String> = cells
+                .iter()
+                .take(condition_count.min(cells.len().saturating_sub(1)))
+                .map(|c| c.trim().to_string())
+                .collect();
+            // Pad with wildcard "-" to ensure all rows have equal length
+            while c.len() < condition_count {
+                c.push("-".into());
+            }
+            c
+        };
         parsed_rows.push(conds);
         parsed_actions.push(cells.last().unwrap().clone());
     }
@@ -74,8 +81,9 @@ pub fn lower_rule_table_with_diagnostics(
                     diagnostics.push(TangleDiagnostic {
                         code: "TANGLE_RULE_DUPLICATE".into(),
                         message: format!("rows {} and {} are identical", i + 1, j + 1),
+                        // TODO: track line numbers through table parsing to provide accurate spans
                         span: SourceSpan {
-                            file: _file.into(),
+                            file: file.into(),
                             start_line: 0,
                             start_column: 0,
                             end_line: 0,
@@ -96,8 +104,9 @@ pub fn lower_rule_table_with_diagnostics(
                                 j + 1,
                                 i + 1
                             ),
+                            // TODO: track line numbers through table parsing to provide accurate spans
                             span: SourceSpan {
-                                file: _file.into(),
+                                file: file.into(),
                                 start_line: 0,
                                 start_column: 0,
                                 end_line: 0,
@@ -113,8 +122,9 @@ pub fn lower_rule_table_with_diagnostics(
                                 j + 1,
                                 i + 1
                             ),
+                            // TODO: track line numbers through table parsing to provide accurate spans
                             span: SourceSpan {
-                                file: _file.into(),
+                                file: file.into(),
                                 start_line: 0,
                                 start_column: 0,
                                 end_line: 0,
@@ -261,5 +271,18 @@ mod tests {
         let mut id_gen = FreshNodeId::new();
         let (_graph, diags) = lower_rule_table_with_diagnostics(md, "test.md", &mut id_gen);
         assert!(diags.iter().any(|d| d.code == "TANGLE_RULE_UNREACHABLE"));
+    }
+
+    #[test]
+    fn table_duplicate_emits_warning() {
+        let md = "\
+| Income | Credit | Result |
+|--------|--------|--------|
+| high | good | approve |
+| high | good | reject |
+";
+        let mut id_gen = FreshNodeId::new();
+        let (_graph, diags) = lower_rule_table_with_diagnostics(md, "test.md", &mut id_gen);
+        assert!(diags.iter().any(|d| d.code == "TANGLE_RULE_DUPLICATE"));
     }
 }
