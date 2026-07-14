@@ -104,7 +104,7 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         }
 
         // Try edge: may contain inline node declarations
-        if let Some((from_part, guard, to_part)) = parse_edge_parts(line) {
+        if let Some((from_part, guard, to_part, edge_kind)) = parse_edge_parts_v2(line) {
             // Extract and register nodes from inline declarations
             if let Some((from_id, from_label)) = extract_inline_node(&from_part) {
                 register_node(
@@ -126,10 +126,12 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
             let to_id = extract_node_id(&to_part);
 
             if let (Some(from), Some(to)) = (node_map.get(&from_id), node_map.get(&to_id)) {
+                // A guard present always makes the edge a Condition; otherwise
+                // propagate the parsed arrow kind (Control/Dashed/Thick/Crossed).
                 let kind = if guard.is_some() {
                     IREdgeKind::Condition
                 } else {
-                    IREdgeKind::Control
+                    edge_kind
                 };
                 edges.push(IREdge {
                     from: from.clone(),
@@ -219,8 +221,16 @@ fn parse_node_decl(line: &str) -> Option<(String, String, bool)> {
     let label = rest[1..rest.len()-1].trim().to_string();
     let is_error = label.to_lowercase().starts_with("error:") || label.starts_with("错误:");
 
-    // Verify this is a standalone node (no edge on the same line)
-    if trimmed.contains("-->") { return None; }
+    // Verify this is a standalone node (no edge on the same line).
+    // Must check all four edge operators: `-.->` before `-->` (substring overlap),
+    // plus `==>` and `--x`.
+    if trimmed.contains("-.->")
+        || trimmed.contains("==>")
+        || trimmed.contains("--x")
+        || trimmed.contains("-->")
+    {
+        return None;
+    }
 
     Some((mermaid_id, label, is_error))
 }
@@ -252,23 +262,40 @@ fn extract_inline_node(part: &str) -> Option<(String, String)> {
     Some((id, label))
 }
 
-/// Parse edge: "A -->|guard| B" -> ("A", Some("guard"), "B")
-/// Also handles inline labels: "A[Label] -->|guard| B(Label)"
-fn parse_edge_parts(line: &str) -> Option<(String, Option<String>, String)> {
+/// Parse edge with multi-edge-type support.
+/// Recognizes four arrow operators and returns the matching `IREdgeKind`:
+///   `-.->` -> Dashed, `==>` -> Thick, `--x` -> Crossed, `-->` -> Control.
+/// Returns `(from_part, guard, to_part, edge_kind)`.
+///
+/// Order matters: `-.->` must be checked before `-->` because `find("-->")`
+/// would otherwise match the trailing `-->` substring inside `-.->`.
+fn parse_edge_parts_v2(line: &str) -> Option<(String, Option<String>, String, IREdgeKind)> {
     let trimmed = line.trim();
-    let arrow_pos = trimmed.find("-->")?;
+
+    // Match by priority: longer / ambiguous operators first.
+    let (arrow_pos, arrow_len, edge_kind) = if let Some(pos) = trimmed.find("-.->") {
+        (pos, 4, IREdgeKind::Dashed)
+    } else if let Some(pos) = trimmed.find("==>") {
+        (pos, 3, IREdgeKind::Thick)
+    } else if let Some(pos) = trimmed.find("--x") {
+        (pos, 3, IREdgeKind::Crossed)
+    } else {
+        let pos = trimmed.find("-->")?;
+        (pos, 3, IREdgeKind::Control)
+    };
+
     let from_part = trimmed[..arrow_pos].trim().to_string();
-    let after_arrow = trimmed[arrow_pos + 3..].trim();
+    let after_arrow = trimmed[arrow_pos + arrow_len..].trim();
 
     if let Some(pipe_start) = after_arrow.find('|') {
-        let pipe_end = after_arrow[pipe_start + 1..].find('|')?;
-        let guard = after_arrow[pipe_start + 1..pipe_start + 1 + pipe_end].trim().to_string();
-        let to_part = after_arrow[pipe_start + 1 + pipe_end + 1..].trim().to_string();
-        Some((from_part, Some(guard), to_part))
-    } else {
-        let to_part = after_arrow.trim().to_string();
-        Some((from_part, None, to_part))
+        if let Some(pipe_end) = after_arrow[pipe_start + 1..].find('|') {
+            let guard = after_arrow[pipe_start + 1..pipe_start + 1 + pipe_end].trim().to_string();
+            let to_part = after_arrow[pipe_start + 1 + pipe_end + 1..].trim().to_string();
+            return Some((from_part, Some(guard), to_part, edge_kind));
+        }
     }
+    let to_part = after_arrow.trim().to_string();
+    Some((from_part, None, to_part, edge_kind))
 }
 
 #[cfg(test)]
@@ -336,5 +363,52 @@ graph TD
         let graph = lower_rule_flow(md, "test.md", &mut id_gen);
         let node_b = graph.nodes.iter().find(|n| n.label == "End").unwrap();
         assert_eq!(node_b.style.as_deref(), Some("fill:#cfc"));
+    }
+
+    #[test]
+    fn flow_dashed_edge_maps_to_dashed() {
+        let md = "\
+graph TD
+    A[Start] -.-> B[Async]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let edge = &graph.edges[0];
+        assert_eq!(edge.kind, IREdgeKind::Dashed);
+    }
+
+    #[test]
+    fn flow_thick_edge_maps_to_thick() {
+        let md = "\
+graph TD
+    A[Start] ==> B[Critical]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        assert_eq!(graph.edges[0].kind, IREdgeKind::Thick);
+    }
+
+    #[test]
+    fn flow_crossed_edge_maps_to_crossed() {
+        let md = "\
+graph TD
+    A[Start] --x B[Failed]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        assert_eq!(graph.edges[0].kind, IREdgeKind::Crossed);
+    }
+
+    #[test]
+    fn flow_dashed_edge_with_guard() {
+        let md = "\
+graph TD
+    A[Start] -.->|async| B[Done]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let edge = &graph.edges[0];
+        assert_eq!(edge.kind, IREdgeKind::Condition); // guard present -> Condition
+        assert_eq!(edge.guard.as_deref(), Some("async"));
     }
 }
