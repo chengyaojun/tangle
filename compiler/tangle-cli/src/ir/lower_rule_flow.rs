@@ -173,17 +173,24 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         }
     }
 
-    let entry_node_id = entry_id.unwrap_or_else(|| {
-        let id = id_gen.fresh();
-        nodes.push(IRNode {
-            id: id.clone(),
-            kind: IRNodeKind::Terminal,
-            label: "empty".into(),
-            source_span: None, source_text: None,
-            group: None, style: None,
+    // 改进入口检测：首选 nodes 中第一个无入边的节点；次选 entry_id（旧的
+    // 首个声明节点，覆盖所有节点都有入边的循环图场景）；兜底创建 empty Terminal。
+    let has_incoming: std::collections::HashSet<&String> = edges.iter().map(|e| &e.to).collect();
+    let entry_node_id = nodes.iter()
+        .find(|n| !has_incoming.contains(&n.id))
+        .map(|n| n.id.clone())
+        .or_else(|| entry_id.clone())
+        .unwrap_or_else(|| {
+            let id = id_gen.fresh();
+            nodes.push(IRNode {
+                id: id.clone(),
+                kind: IRNodeKind::Terminal,
+                label: "empty".into(),
+                source_span: None, source_text: None,
+                group: None, style: None,
+            });
+            id
         });
-        id
-    });
 
     RuleGraph { nodes, edges, error_edges: vec![], entry_node_id, imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![] }
 }
@@ -511,5 +518,47 @@ graph TD
         let graph = lower_rule_flow(md, "test.md", &mut id_gen);
         let b = graph.nodes.iter().find(|n| n.label == "End").unwrap();
         assert_eq!(b.kind, IRNodeKind::Terminal);
+    }
+
+    #[test]
+    fn flow_entry_is_first_node_with_no_incoming() {
+        let md = "\
+graph TD
+    A[Start] --> B[Middle]
+    B --> C[End]
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let entry_node = graph.nodes.iter().find(|n| n.id == graph.entry_node_id).unwrap();
+        assert_eq!(entry_node.label, "Start");
+    }
+
+    #[test]
+    fn flow_multi_entry_picks_first() {
+        // A 和 D 都无入边
+        let md = "\
+graph TD
+    A[Start1] --> B[Mid]
+    D[Start2] --> B
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        // 第一个无入边的节点 = A
+        let entry_node = graph.nodes.iter().find(|n| n.id == graph.entry_node_id).unwrap();
+        assert_eq!(entry_node.label, "Start1");
+    }
+
+    #[test]
+    fn flow_entry_skips_node_with_incoming() {
+        // A 首个声明，但 A 有入边（来自 B）；应跳过 A，选择首个无入边的节点 B。
+        let md = "\
+graph TD
+    A[Start]
+    B[Mid] --> A
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let entry_node = graph.nodes.iter().find(|n| n.id == graph.entry_node_id).unwrap();
+        assert_eq!(entry_node.label, "Mid");
     }
 }
