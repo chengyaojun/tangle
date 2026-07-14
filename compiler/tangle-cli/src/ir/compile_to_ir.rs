@@ -4,7 +4,7 @@ use crate::ir::graph::*;
 use crate::ir::lower::lower_statements;
 use crate::ir::lower::stmt_source;
 use crate::ir::lower_rule_flow::lower_rule_flow;
-use crate::ir::lower_rule_table::lower_rule_table;
+use crate::ir::lower_rule_table::lower_rule_table_with_diagnostics;
 use crate::ir::lower_rule_tree::lower_rule_tree;
 use crate::ir::lower_rule_toggle::lower_rule_toggle;
 use crate::ir::validate::validate_ir;
@@ -94,9 +94,7 @@ fn collect_rule_graphs(
                 RuleKind::Flow => {
                     (lower_rule_flow(&rule.source, file, id_gen), vec![])
                 }
-                RuleKind::Table => {
-                    (lower_rule_table(&rule.source, file, id_gen), vec![])
-                }
+                RuleKind::Table => lower_rule_table_with_diagnostics(&rule.source, file, id_gen),
                 RuleKind::Tree => lower_rule_tree(&rule.source, file, id_gen),
                 RuleKind::Toggle => {
                     (lower_rule_toggle(&rule.source, file, id_gen), vec![])
