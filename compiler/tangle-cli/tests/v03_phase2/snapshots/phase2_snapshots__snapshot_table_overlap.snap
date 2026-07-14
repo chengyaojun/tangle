@@ -1,0 +1,52 @@
+---
+source: compiler/tangle-cli/tests/v03_phase2/snapshots.rs
+expression: graph_to_json(&graph)
+---
+{
+  "edges": [
+    {
+      "from": "n0",
+      "guard": "Income = high",
+      "kind": "condition",
+      "priority": 0,
+      "sourceSpan": null,
+      "to": "n1"
+    },
+    {
+      "from": "n0",
+      "guard": "Credit = good",
+      "kind": "condition",
+      "priority": 1,
+      "sourceSpan": null,
+      "to": "n2"
+    }
+  ],
+  "entryNodeId": "n0",
+  "errorEdges": [],
+  "functions": [],
+  "importedStdlib": [],
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "decision",
+      "label": "table.entry",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n1",
+      "kind": "action",
+      "label": "approve",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n2",
+      "kind": "action",
+      "label": "review",
+      "sourceSpan": null,
+      "sourceText": null
+    }
+  ],
+  "stdlibImports": []
+}

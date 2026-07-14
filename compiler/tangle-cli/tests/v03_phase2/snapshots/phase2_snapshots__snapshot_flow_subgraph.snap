@@ -1,0 +1,66 @@
+---
+source: compiler/tangle-cli/tests/v03_phase2/snapshots.rs
+expression: graph_to_json(&graph)
+---
+{
+  "edges": [
+    {
+      "from": "n0",
+      "guard": null,
+      "kind": "control",
+      "sourceSpan": null,
+      "to": "n1"
+    },
+    {
+      "from": "n1",
+      "guard": "yes",
+      "kind": "condition",
+      "sourceSpan": null,
+      "to": "n2"
+    },
+    {
+      "from": "n1",
+      "guard": "no",
+      "kind": "condition",
+      "sourceSpan": null,
+      "to": "n3"
+    }
+  ],
+  "entryNodeId": "n0",
+  "errorEdges": [],
+  "functions": [],
+  "importedStdlib": [],
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "action",
+      "label": "Start",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n1",
+      "kind": "decision",
+      "label": "Decision",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "group": "Approval",
+      "id": "n2",
+      "kind": "action",
+      "label": "Approve",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "group": "Rejection",
+      "id": "n3",
+      "kind": "action",
+      "label": "Reject",
+      "sourceSpan": null,
+      "sourceText": null
+    }
+  ],
+  "stdlibImports": []
+}
