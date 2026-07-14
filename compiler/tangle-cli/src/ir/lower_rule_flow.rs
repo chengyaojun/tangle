@@ -561,4 +561,29 @@ graph TD
         let entry_node = graph.nodes.iter().find(|n| n.id == graph.entry_node_id).unwrap();
         assert_eq!(entry_node.label, "Mid");
     }
+
+    #[test]
+    fn flow_cyclic_falls_back_to_first_declared() {
+        // A 与 B 互相指向，二者均有入边 ⇒ 回退到 entry_id（首声明 = A）
+        let md = "\
+graph TD
+    A[Start] --> B[Mid]
+    B --> A
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let entry_node = graph.nodes.iter().find(|n| n.id == graph.entry_node_id).unwrap();
+        assert_eq!(entry_node.label, "Start");
+    }
+
+    #[test]
+    fn flow_empty_graph_creates_terminal() {
+        let md = "graph TD\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.nodes[0].kind, IRNodeKind::Terminal);
+        assert_eq!(graph.nodes[0].label, "empty");
+        assert_eq!(graph.entry_node_id, graph.nodes[0].id);
+    }
 }
