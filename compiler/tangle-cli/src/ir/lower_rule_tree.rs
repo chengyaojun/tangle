@@ -175,4 +175,31 @@ More text
         assert_eq!(roots[0].children.len(), 1);
         assert_eq!(roots[0].children[0].text, "Tabbed child");
     }
+
+    #[test]
+    fn parse_list_depth_jump_skips_node() {
+        // 深度跳跃（depth 0 → depth 2，跳过 depth 1）时，跳跃的节点被跳过。
+        // 这是设计行为：有效 DNF 输入不应出现深度跳跃。
+        let md = "\
+* A
+        * B
+";
+        let roots = parse_list_to_tree(md);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].text, "A");
+        assert_eq!(roots[0].children.len(), 0); // B 被跳过
+    }
+
+    #[test]
+    fn parse_list_handles_dash_marker() {
+        let md = "\
+- Branch A
+    - Cond 1
+";
+        let roots = parse_list_to_tree(md);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].text, "Branch A");
+        assert_eq!(roots[0].children.len(), 1);
+        assert_eq!(roots[0].children[0].text, "Cond 1");
+    }
 }
