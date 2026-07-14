@@ -35,7 +35,7 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
     let condition_count = headers.len().saturating_sub(1);
 
     // Parse data rows
-    for line in &lines[1..] {
+    for (row_idx, line) in lines[1..].iter().enumerate() {
         let cells = split_table_row(line);
         if cells.len() < 2 {
             continue;
@@ -76,7 +76,7 @@ pub fn lower_rule_table(table_markdown: &str, _file: &str, id_gen: &mut FreshNod
             kind: IREdgeKind::Condition,
             guard,
             source_span: None,
-            priority: None, style: None,
+            priority: Some(row_idx as u32), style: None,
         });
     }
 
@@ -88,4 +88,44 @@ fn split_table_row(line: &str) -> Vec<String> {
         .map(|c| c.trim().to_string())
         .filter(|c| !c.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_assigns_priority_by_row_order() {
+        let md = "\
+| Income | Credit | Result |
+|--------|--------|--------|
+| high | good | approve |
+| low | - | review |
+| - | poor | reject |
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_table(md, "test.md", &mut id_gen);
+
+        // 3 data rows → 3 edges from entry, each with priority
+        let entry_edges: Vec<&IREdge> = graph.edges.iter()
+            .filter(|e| e.from == graph.entry_node_id)
+            .collect();
+        assert_eq!(entry_edges.len(), 3);
+        assert_eq!(entry_edges[0].priority, Some(0));
+        assert_eq!(entry_edges[1].priority, Some(1));
+        assert_eq!(entry_edges[2].priority, Some(2));
+    }
+
+    #[test]
+    fn table_wildcard_omits_condition() {
+        let md = "\
+| Income | Result |
+|--------|--------|
+| - | approve |
+";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_table(md, "test.md", &mut id_gen);
+        let edge = &graph.edges[0];
+        assert!(edge.guard.is_none()); // wildcard → no guard
+    }
 }
