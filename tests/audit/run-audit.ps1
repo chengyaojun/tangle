@@ -34,6 +34,27 @@ $surfaces = @("run","build","doc")
 $targets = @("js","py","go")
 $modes = @("normal","incremental","interp")
 
+# Expected diagnostics allowlist: fixtures that intentionally produce
+# diagnostics (e.g., testing overlap detection). Cells from these fixtures
+# are not counted as failing if all emitted codes are in the expected set.
+# Mirrors tests/audit/expected_diagnostics.yaml (kept in sync manually
+# until powershell-yaml is available in CI).
+$ExpectedDiagCodes = @{
+    "decision-table-overlap.tangle.md" = @("TANGLE_RULE_OVERLAP", "TANGLE_RULE_UNREACHABLE")
+}
+
+# Returns $true if every emitted TANGLE_* code for $fixtureName is in the
+# expected allowlist for that fixture (i.e., the diagnostics are intentional).
+function Test-DiagnosticsExpected {
+    param([string]$FixtureName, [System.Text.RegularExpressions.Match[]]$DiagMatches)
+    $expected = $ExpectedDiagCodes[$FixtureName]
+    if (-not $expected) { return $false }
+    if ($DiagMatches.Count -eq 0) { return $false }
+    $actual = $DiagMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    $unexpected = $actual | Where-Object { $_ -notin $expected }
+    return ($unexpected.Count -eq 0)
+}
+
 "surface,target,mode,fixture,exit_code,diag_count,diag_codes" | Out-File -FilePath $csvPath -Encoding UTF8
 
 $failingCells = [System.Collections.ArrayList]::new()
@@ -85,7 +106,9 @@ foreach ($fixture in $fixtures) {
                 $csvRow = "$surface,$target,$mode,$fixture,$exitCode,$diagCount,$diagCodes"
                 Add-Content -Path $csvPath -Value $csvRow -Encoding UTF8
 
-                if ($diagCount -gt 0) {
+                $fixtureLeaf = Split-Path $fixture -Leaf
+                $isExpected = Test-DiagnosticsExpected -FixtureName $fixtureLeaf -DiagMatches $diagMatches
+                if ($diagCount -gt 0 -and -not $isExpected) {
                     $failingCells.Add([PSCustomObject]@{
                         Cell = $cellId; Surface = $surface; Target = $target; Mode = $mode; Fixture = $fixture; DiagCount = $diagCount; Codes = $diagCodes
                     }) | Out-Null
@@ -108,7 +131,9 @@ foreach ($fixture in $fixtures) {
     $diagCount = $diagMatches.Count
     $diagCodes = ($diagMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique) -join '|'
     Add-Content -Path $csvPath -Value "build,emit-ir,normal,$fixture,$($process.ExitCode),$diagCount,$diagCodes" -Encoding UTF8
-    if ($diagCount -gt 0) {
+    $fixtureLeaf = Split-Path $fixture -Leaf
+    $isExpected = Test-DiagnosticsExpected -FixtureName $fixtureLeaf -DiagMatches $diagMatches
+    if ($diagCount -gt 0 -and -not $isExpected) {
         $failingCells.Add([PSCustomObject]@{ Cell = $cellId; Surface = "build"; Target = "emit-ir"; Mode = "normal"; Fixture = $fixture; DiagCount = $diagCount; Codes = $diagCodes }) | Out-Null
     }
     $cellCount++

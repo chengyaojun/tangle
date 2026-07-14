@@ -8,9 +8,34 @@
 #       - TANGLE_CODE_1
 #       - TANGLE_CODE_2
 #
-# Empty initially. Populate as audit reveals intentional error fixtures.
+# NOTE: This file is documentation-only. The audit script (run-audit.ps1)
+# currently reads its allowlist from the hard-coded `$ExpectedDiagCodes` hash
+# table inside the script. Keep both in sync until powershell-yaml is
+# available in CI, at which point the script can read this file directly.
 
-# Example (not yet populated — to be filled after first audit run):
-# payment.tangle.md:
-#   run/js/normal:
-#     - TANGLE_PANIC_REACHED
+# Phase 2 fixtures that intentionally exercise diagnostic features:
+decision-table-overlap.tangle.md:
+  run/js/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/js/incremental:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/py/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/go/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/js/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/py/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/go/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/emit-ir/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
