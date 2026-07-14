@@ -105,17 +105,15 @@ pub fn lower_rule_flow(mermaid_source: &str, _file: &str, id_gen: &mut FreshNode
         // Try edge: may contain inline node declarations
         if let Some((from_part, guard, to_part, edge_kind)) = parse_edge_parts_v2(line) {
             // Extract and register nodes from inline declarations
-            if let Some((from_id, from_label)) = extract_inline_node(&from_part) {
-                let from_shape = infer_inline_shape(&from_part);
+            if let Some((from_id, from_label, from_shape)) = extract_inline_node(&from_part) {
                 register_node(
                     &from_id, from_label, false, current_group.clone(), from_shape,
                     &mut node_map, &mut nodes, &mut entry_id, id_gen,
                 );
             }
-            if let Some((to_id, to_label)) = extract_inline_node(&to_part) {
+            if let Some((to_id, to_label, to_shape)) = extract_inline_node(&to_part) {
                 let is_error = to_label.to_lowercase().starts_with("error:")
                     || to_label.starts_with("错误:");
-                let to_shape = infer_inline_shape(&to_part);
                 register_node(
                     &to_id, to_label, is_error, current_group, to_shape,
                     &mut node_map, &mut nodes, &mut entry_id, id_gen,
@@ -225,15 +223,6 @@ fn shape_to_kind(shape: NodeShape, is_error: bool) -> IRNodeKind {
     }
 }
 
-/// Infer `NodeShape` from an inline edge part such as `A[Label]` or `A((Label))`.
-/// Simplified: `((` -> Circle, `{` -> Diamond, otherwise default Rect (Rounded
-/// also maps to Action, so it is folded into the Rect default).
-fn infer_inline_shape(part: &str) -> NodeShape {
-    if part.contains("((") { NodeShape::Circle }
-    else if part.contains('{') { NodeShape::Diamond }
-    else { NodeShape::Rect }
-}
-
 /// Parse standalone node declaration: A[Label] -> (id, label, is_error, shape)
 fn parse_node_decl(line: &str) -> Option<(String, String, bool, NodeShape)> {
     let trimmed = line.trim();
@@ -241,9 +230,8 @@ fn parse_node_decl(line: &str) -> Option<(String, String, bool, NodeShape)> {
     let mermaid_id = trimmed[..id_end].to_string();
     let rest = trimmed[id_end..].trim_start();
 
-    // Verify this is a standalone node (no edge on the same line).
-    // Must check all four edge operators: `-.->` before `-->` (substring overlap),
-    // plus `==>` and `--x`.
+    // Check all four edge operators; if any is present, this is an edge line,
+    // not a standalone node. Order is irrelevant here because they are OR-joined.
     if trimmed.contains("-->")
         || trimmed.contains("-.->")
         || trimmed.contains("==>")
@@ -290,23 +278,25 @@ fn extract_node_id(part: &str) -> String {
     }
 }
 
-/// Extract inline node: "A[Label]" -> ("A", "Label"), "A" -> None (bare ID)
-fn extract_inline_node(part: &str) -> Option<(String, String)> {
+/// Extract inline node: "A[Label]" -> ("A", "Label", Rect), "A" -> None (bare ID).
+/// The shape is determined by the delimiter immediately following the ID, so a
+/// label containing `{` or `((` substrings does not skew classification.
+fn extract_inline_node(part: &str) -> Option<(String, String, NodeShape)> {
     let part = part.trim();
     let id_end = part.find(|c: char| !c.is_ascii_alphanumeric() && c != '_')?;
     let id = part[..id_end].to_string();
     let rest = part[id_end..].trim_start();
 
-    let (open, close) = if rest.starts_with("((") { ("((", "))") }
-    else if rest.starts_with('[') { ("[", "]") }
-    else if rest.starts_with('(') { ("(", ")") }
-    else if rest.starts_with('{') { ("{", "}") }
+    let (open, close, shape) = if rest.starts_with("((") { ("((", "))", NodeShape::Circle) }
+    else if rest.starts_with('[') { ("[", "]", NodeShape::Rect) }
+    else if rest.starts_with('(') { ("(", ")", NodeShape::Rounded) }
+    else if rest.starts_with('{') { ("{", "}", NodeShape::Diamond) }
     else { return None; };
 
     let close_pos = rest.find(close)?;
     let inner_start = open.len();
     let label = rest[inner_start..close_pos].trim().to_string();
-    Some((id, label))
+    Some((id, label, shape))
 }
 
 /// Parse edge with multi-edge-type support.
@@ -484,5 +474,42 @@ graph TD
         let graph = lower_rule_flow(md, "test.md", &mut id_gen);
         let node = &graph.nodes[0];
         assert_eq!(node.kind, IRNodeKind::Action);
+    }
+
+    #[test]
+    fn flow_inline_rect_with_brace_in_label_maps_to_action() {
+        // Regression: a rect node `[Output: {json}]` whose label contains a `{`
+        // must NOT be misclassified as a Diamond/Decision by `infer_inline_shape`.
+        let md = "graph TD\n    A[Start] --> B[Output: {json}]\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let b = graph.nodes.iter().find(|n| n.label == "Output: {json}").unwrap();
+        assert_eq!(b.kind, IRNodeKind::Action);
+    }
+
+    #[test]
+    fn flow_rounded_shape_maps_to_action() {
+        let md = "graph TD\n    A(Do something)\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        assert_eq!(graph.nodes[0].kind, IRNodeKind::Action);
+    }
+
+    #[test]
+    fn flow_inline_diamond_shape_maps_to_decision() {
+        let md = "graph TD\n    A[Start] --> B{Is valid?}\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let b = graph.nodes.iter().find(|n| n.label == "Is valid?").unwrap();
+        assert_eq!(b.kind, IRNodeKind::Decision);
+    }
+
+    #[test]
+    fn flow_inline_circle_shape_maps_to_terminal() {
+        let md = "graph TD\n    A[Start] --> B((End))\n";
+        let mut id_gen = FreshNodeId::new();
+        let graph = lower_rule_flow(md, "test.md", &mut id_gen);
+        let b = graph.nodes.iter().find(|n| n.label == "End").unwrap();
+        assert_eq!(b.kind, IRNodeKind::Terminal);
     }
 }
