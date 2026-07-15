@@ -6,8 +6,10 @@ pub fn validate_ir(graph: &RuleGraph) -> Vec<TangleDiagnostic> {
     let mut diagnostics = vec![];
     let node_ids: HashSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
 
-    // Check entry node exists
-    if !node_ids.contains(graph.entry_node_id.as_str()) {
+    // Check entry node exists. In multi-function mode (functions[] non-empty)
+    // the top-level graph is a rule-only shell: entries live per-function, so
+    // the top-level entry_node_id is not expected to resolve to a top-level node.
+    if graph.functions.is_empty() && !node_ids.contains(graph.entry_node_id.as_str()) {
         diagnostics.push(TangleDiagnostic {
             code: "TANGLE_IR_VALIDATION_ERROR".into(),
             message: format!("Entry node '{}' not found in graph", graph.entry_node_id),

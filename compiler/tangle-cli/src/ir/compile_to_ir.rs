@@ -15,15 +15,24 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
     let mut id_gen = FreshNodeId::new();
     let mut merged_graph: Option<RuleGraph> = None;
 
-    // Lower @tangle code blocks as statements
-    for block in &checked.parsed_blocks {
-        let sub_graph = lower_statements(&block.body.statements, &block.source, &checked.file, &mut id_gen);
-        match &mut merged_graph {
-            None => merged_graph = Some(sub_graph),
-            Some(ref mut g) => {
-                g.nodes.extend(sub_graph.nodes);
-                g.edges.extend(sub_graph.edges);
-                g.error_edges.extend(sub_graph.error_edges);
+    // Multi-function mode: a `main` Callable heading turns the module into a
+    // collection of functions. @tangle blocks then live inside `functions[]`
+    // only and must NOT also be merged into the top-level graph (dual-entry fix
+    // A1-1). Without `main`, the fallback single-function mode merges blocks at
+    // the top level.
+    let has_main = has_main_callable(&checked.headings);
+
+    // Lower @tangle code blocks as statements (fallback mode only).
+    if !has_main {
+        for block in &checked.parsed_blocks {
+            let sub_graph = lower_statements(&block.body.statements, &block.source, &checked.file, &mut id_gen);
+            match &mut merged_graph {
+                None => merged_graph = Some(sub_graph),
+                Some(ref mut g) => {
+                    g.nodes.extend(sub_graph.nodes);
+                    g.edges.extend(sub_graph.edges);
+                    g.error_edges.extend(sub_graph.error_edges);
+                }
             }
         }
     }
@@ -42,24 +51,32 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
         }
     }
 
-    let mut graph = merged_graph.unwrap_or_else(|| {
-        let entry_id = id_gen.fresh();
-        let mut g = create_graph(entry_id.clone());
-        g.nodes.push(IRNode {
-            id: entry_id.clone(), kind: IRNodeKind::Terminal,
-            label: "empty".into(), source_span: None, source_text: None,
-            group: None, style: None,
-        });
-        g
-    });
+    // Build the top-level graph. In multi-function mode the top-level holds
+    // only rule graphs (if any); do NOT synthesize an "empty" placeholder node
+    // — `functions[]` carries all @tangle content and the shell must stay empty.
+    // In fallback mode, preserve the existing "empty" terminal placeholder when
+    // nothing was merged.
+    let mut graph = if has_main {
+        merged_graph.unwrap_or_else(|| create_graph(id_gen.fresh()))
+    } else {
+        merged_graph.unwrap_or_else(|| {
+            let entry_id = id_gen.fresh();
+            let mut g = create_graph(entry_id.clone());
+            g.nodes.push(IRNode {
+                id: entry_id.clone(), kind: IRNodeKind::Terminal,
+                label: "empty".into(), source_span: None, source_text: None,
+                group: None, style: None,
+            });
+            g
+        })
+    };
 
-    // Build heading-defined functions (one per Callable heading with code blocks).
-    // Multi-function emission is only activated when a `main` entry point exists;
-    // otherwise the single merged function (module-named) is the fallback, which
-    // correctly handles modules with only loose blocks or non-main callables.
-    let mut functions: Vec<IRFunction> = vec![];
-    collect_functions(&checked.headings, None, &checked.parsed_blocks, &mut id_gen, &mut functions);
-    if functions.iter().any(|f| f.name == "main") {
+    // Build heading-defined functions (multi-function mode only). `has_main`
+    // already mirrors the condition under which `collect_functions` would emit a
+    // `main` entry, so the top-level / functions[] split stays consistent.
+    if has_main {
+        let mut functions: Vec<IRFunction> = vec![];
+        collect_functions(&checked.headings, None, &checked.parsed_blocks, &mut id_gen, &mut functions);
         graph.functions = functions;
     }
 
@@ -198,4 +215,26 @@ fn lower_function_body(
     });
 
     (nodes, edges, entry_id, vec![])
+}
+
+/// Check whether the module has a `main` Callable heading that owns `@tangle`
+/// code blocks. This enables multi-function mode: `@tangle` blocks live inside
+/// `functions[]` only and the top-level graph stays clear of them.
+///
+/// The predicate mirrors `collect_functions` exactly (Callable role, non-empty
+/// `code_blocks`, `symbol_name == "main"`), recursing into child headings, so the
+/// decision is consistent with whatever `collect_functions` would emit.
+fn has_main_callable(headings: &[TangleHeading]) -> bool {
+    for h in headings {
+        if h.role == HeadingRole::Callable
+            && !h.code_blocks.is_empty()
+            && h.symbol_name.as_deref() == Some("main")
+        {
+            return true;
+        }
+        if has_main_callable(&h.children) {
+            return true;
+        }
+    }
+    false
 }
