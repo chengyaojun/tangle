@@ -14,7 +14,7 @@ fn span_tree_empty_branch_diagnostic_has_nonzero_line() {
     let empty_diag = diagnostics.iter().find(|d| d.code == "TANGLE_RULE_EMPTY_BRANCH");
     assert!(empty_diag.is_some(), "should emit TANGLE_RULE_EMPTY_BRANCH");
     let diag = empty_diag.unwrap();
-    assert!(diag.span.start_line != 0, "span.start_line should be nonzero, got {}", diag.span.start_line);
+    assert_eq!(diag.span.start_line, 1, "empty branch 'no_children' is on line 1");
     assert_eq!(diag.span.file, "test.md");
 }
 
@@ -32,5 +32,5 @@ fn span_tree_no_action_diagnostic_has_nonzero_line() {
     let no_action_diag = diagnostics.iter().find(|d| d.code == "TANGLE_RULE_NO_ACTION");
     assert!(no_action_diag.is_some(), "should emit TANGLE_RULE_NO_ACTION");
     let diag = no_action_diag.unwrap();
-    assert!(diag.span.start_line != 0, "span.start_line should be nonzero, got {}", diag.span.start_line);
+    assert_eq!(diag.span.start_line, 3, "branch 'has_conditions' is on line 3");
 }
