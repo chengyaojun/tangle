@@ -22,7 +22,7 @@ Phase 4 (v0.4.0) 闭合了 Phase 3 的 4 项推迟，但留下 2 个差分测试
 
 ### 1.3 成功标准
 
-- `tests/audit/diff-ir.ps1` 报告 **0 KNOWN_DIFF + 0 SKIPPED + 全 MATCH**（3 → 10 MATCH，含 payment + 6 rule fixture + order-service）
+- `tests/audit/diff-ir.ps1` 报告 **0 KNOWN_DIFF + 1 SKIPPED + 10 MATCH**（3 → 10 MATCH，含 payment + 6 rule fixture；order-service 保持 SKIPPED，因其 TS 端失败根因是 B5 类型系统推迟项，不在 Phase 5 范围）
 - payment.tangle Rust IR 顶层 `nodes[]` 在 `functions[]` 非空时不含 Callable 代码块节点
 - Py/Go emitter 在 `functions[]` 非空时发射多函数代码（与 JS 一致）
 - 三宿主 `emit_branch_body` 含 `depth: usize` 参数，超 100 发 `// max depth reached` 注释
@@ -249,10 +249,10 @@ import { lowerRuleToggle } from "./ruleToggle.js";
 export function compileToIR(checked: CheckedModule): { graph: RuleGraph; diagnostics: TangleDiagnostic[] } {
   const allDiagnostics: TangleDiagnostic[] = [...checked.diagnostics];
   let graph = createGraph("");
-  
+
   // 1. Lower @tangle code blocks（保持现状）
   for (const parsed of checked.parsedBlocks) { ... }
-  
+
   // 2. Lower rule blocks from headings（新增）
   const ruleDiags: TangleDiagnostic[] = [];
   collectRuleGraphs(checked.headings, checked.file, (ruleKind, markdown, heading) => {
@@ -266,7 +266,7 @@ export function compileToIR(checked: CheckedModule): { graph: RuleGraph; diagnos
     mergeInto(&graph, subGraph);
   });
   allDiagnostics.push(...ruleDiags);
-  
+
   // 3. Validate（保持现状）
   ...
 }
@@ -336,21 +336,18 @@ export function compileToIR(checked: CheckedModule): { graph: RuleGraph; diagnos
 
 ### 4.9 A2 测试
 
-**策略**：端到端差分测试为主，单元测试为辅。
+**策略**：端到端差分测试为主，单元测试为辅。**扩展现有 4 个测试文件**（`reference/tests/ir/rule*.test.ts` 已有基础骨架），不新建聚合文件。
 
-`reference/src/ir/__tests__/ruleLowering.test.ts`（新文件，用 vitest）：
-
-| 测试 | 验证内容 |
-|------|---------|
-| `ruleToggle_lower_basic_checkbox` | toggle 基础 lowering |
-| `ruleToggle_lower_with_group_style` | group/style 附加 |
-| `ruleTree_lower_dnf_and_or` | DNF AND/OR 嵌套 |
-| `ruleTree_lower_action_endpoint` | Action: 子项作为 Terminal |
-| `ruleTable_lower_priority_ordering` | priority 升序排列 |
-| `ruleTable_lower_overlap_detection` | overlap 诊断发射 |
-| `ruleFlow_lower_subgraph_group` | subgraph → group 字段 |
-| `ruleFlow_lower_dashed_edge` | Dashed edge 类型 |
-| `ruleFlow_lower_crossed_edge_skipped` | Crossed edge 标记 |
+| 测试文件 | 新增测试 | 验证内容 |
+|---------|---------|---------|
+| `reference/tests/ir/ruleToggle.test.ts` | `ruleToggle_lower_with_group_style` | group/style 附加 |
+| `reference/tests/ir/ruleTree.test.ts` | `ruleTree_lower_dnf_and_or` | DNF AND/OR 嵌套 |
+| `reference/tests/ir/ruleTree.test.ts` | `ruleTree_lower_action_endpoint` | Action: 子项作为 Terminal |
+| `reference/tests/ir/ruleTable.test.ts` | `ruleTable_lower_priority_ordering` | priority 升序排列 |
+| `reference/tests/ir/ruleTable.test.ts` | `ruleTable_lower_overlap_detection` | overlap 诊断发射 |
+| `reference/tests/ir/ruleFlow.test.ts` | `ruleFlow_lower_subgraph_group` | subgraph → group 字段 |
+| `reference/tests/ir/ruleFlow.test.ts` | `ruleFlow_lower_dashed_edge` | Dashed edge 类型 |
+| `reference/tests/ir/ruleFlow.test.ts` | `ruleFlow_lower_crossed_edge_skipped` | Crossed edge 标记 |
 
 加上 `diff-ir.ps1` 端到端：6 个 rule fixture 输出 `[MATCH]`。
 
@@ -513,7 +510,10 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 | `reference/src/ir/ruleTable.ts` | A2 — 忠实 port lower_rule_table.rs（262 行 → ~350 行 TS） | 修改 |
 | `reference/src/ir/ruleFlow.ts` | A2 — 忠实 port lower_rule_flow.rs（535 行 → ~700 行 TS） | 修改 |
 | `reference/src/ir/ruleToggle.ts` | A2 — 忠实 port lower_rule_toggle.rs（150 行 → ~200 行 TS） | 修改 |
-| `reference/src/ir/__tests__/ruleLowering.test.ts` | A2 — vitest 单元测试 | 创建 |
+| `reference/tests/ir/ruleToggle.test.ts` | A2 — 扩展 vitest 单元测试 | 修改 |
+| `reference/tests/ir/ruleTree.test.ts` | A2 — 扩展 vitest 单元测试 | 修改 |
+| `reference/tests/ir/ruleTable.test.ts` | A2 — 扩展 vitest 单元测试 | 修改 |
+| `reference/tests/ir/ruleFlow.test.ts` | A2 — 扩展 vitest 单元测试 | 修改 |
 | `compiler/tangle-cli/tests/v05_phase5/dual_entry_fix.rs` | A1 测试（Cargo name: `phase5_dual_entry`） | 创建 |
 | `compiler/tangle-cli/tests/v05_phase5/recursion_depth.rs` | B2 测试（Cargo name: `phase5_recursion_depth`） | 创建 |
 | `compiler/tangle-cli/tests/v05_phase5/toggle_cross_block.rs` | B4 测试（Cargo name: `phase5_toggle_cross_block`） | 创建 |
@@ -521,7 +521,7 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 | `tests/v05_phase5/deep-recursion.tangle.md` | B2 fixture（100+ 层嵌套） | 创建 |
 | `tests/v05_phase5/multi-toggle-blocks.tangle.md` | B4 fixture（2 个 toggle 块） | 创建 |
 
-**总计**：修改 11 个文件，创建 6 个文件。
+**总计**：修改 15 个文件，创建 5 个文件。
 
 ## 8. 测试策略
 
@@ -529,7 +529,7 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 
 - `compiler/tangle-cli/tests/v05_phase5/`（A1/B2/B4 集成测试）
 - `tests/audit/ir-diff/src/main.rs` 内 `#[cfg(test)] mod tests`（A1 ir-diff 单元测试扩展）
-- `reference/src/ir/__tests__/ruleLowering.test.ts`（A2 TS 单元测试）
+- `reference/tests/ir/rule*.test.ts`（A2 TS 单元测试，扩展现有 4 个文件）
 
 ### 8.2 回归测试
 
@@ -538,14 +538,14 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 - **Phase 3 `snapshots.rs` 快照无需更新**：B2 改动后 depth 仅在超 100 时发注释，正常用例输出不变。
 - **payment.tangle 的 Py/Go codegen 输出变化**：从单函数（main+process 合并）变为多函数（main 和 process 分开）。审计确认 Phase 3 snapshots 不含 payment，无影响。
 - 现有 Phase 2 快照测试匹配（IR 层无变化）
-- `diff-ir.ps1` 从 3 MATCH/1 KNOWN_DIFF/7 SKIPPED 变为 10 MATCH/0 KNOWN_DIFF/0 SKIPPED
+- `diff-ir.ps1` 从 3 MATCH/1 KNOWN_DIFF/7 SKIPPED 变为 10 MATCH/0 KNOWN_DIFF/1 SKIPPED（order-service 依赖 B5 类型系统，保持 SKIPPED）
 
 ### 8.3 差分测试增强
 
 `diff-ir.ps1` 端到端验证：
 - payment.tangle：`[KNOWN_DIFF]` → `[MATCH]`（A1 + A2 联合）
 - 6 个 rule fixture：`[SKIPPED]` → `[MATCH]`（A2）
-- order-service.tangle：`[SKIPPED]`（TS 失败）→ 调查并修复（A2 顺带，若 TS 端 rule lower 实现后 order-service 仍失败，单独调查）
+- order-service.tangle：保持 `[SKIPPED]`。TS 端失败根因是类型检查器无法解析 `Order` 结构体、`Err/Ok` 构造器、`Order.create` 跨函数调用（B5.3 跨模块用户函数调用解析 + B5.5 用户方法返回类型标注解析），**不在 Phase 5 范围内**。Phase 5 完成后作为已知遗留项记录，等 B5 类型系统扩展后再修复。
 
 ## 9. 出口闸门
 
@@ -554,7 +554,7 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 | 1. 单元+集成测试 | `cargo test --workspace` | 全绿 |
 | 2. Clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 0 警告 |
 | 3. 审计回归 | `tests/audit/run-audit.ps1` | 0 failing |
-| 4. 差分测试 | `tests/audit/diff-ir.ps1` | **0 KNOWN_DIFF + 0 SKIPPED + 10 MATCH** |
+| 4. 差分测试 | `tests/audit/diff-ir.ps1` | **0 KNOWN_DIFF + 1 SKIPPED (order-service) + 10 MATCH** |
 | 5. Phase 4 回归 | `cargo test --test phase4_py_go_codegen --test phase4_toggle_lowering` | 全绿 |
 | 6. Phase 5 新测试 | `cargo test --test phase5_dual_entry --test phase5_recursion_depth --test phase5_toggle_cross_block` + `cargo test --manifest-path tests/audit/ir-diff/Cargo.toml` | 全绿 |
 | 7. TS 参考实现测试 | `cd reference && npm test` | 全绿（vitest） |
@@ -569,7 +569,7 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 - Py/Go codegen 的 `source_text` 翻译（与 B1 重叠）
 - `IRFunction.params`/`receiver` 结构扩展（当前为空/null，未来 phase 处理）
 - TS 参考实现的 functions[] 概念引入（payment 由 ir-diff 归一化处理，TS 端保持顶层 merged_graph 模式）
-- order-service.tangle 若 A2 后仍失败的深度调查（若 TS 端 rule lower 实现后仍失败，作为 Phase 5 的已知遗留项报告）
+- order-service.tangle 若 A2 后仍失败的深度调查（order-service 的 TS 端失败根因是 B5 类型系统推迟项，Phase 5 必然保持 SKIPPED，不调查；等 B5 扩展后再修复）
 
 ## 11. 风险与缓解
 
@@ -580,5 +580,5 @@ Fixture：`tests/v05_phase5/multi-toggle-blocks.tangle.md`（含 2 个 `@rule.to
 | A2 TS 端忠实 port 工作量大（~1650 行 TS） | Phase 5 周期长 | port 顺序 toggle → tree → table → flow，每完成一个 fixture 立即差分验证，早失败早修复 |
 | A2 TS 端 Mermaid 解析与 Rust 端正则不一致 | ruleFlow fixture DIFF | 直接 port Rust 正则（regex crate 与 JS RegExp 语法兼容），逐个 fixture 验证 |
 | B2 depth 参数改动三宿主 emit_branch_body 签名 | 调用点编译失败 | 同步改所有调用点，编译验证 |
-| B4 "无代码改动"闭合方式被质疑不严谨 | 闭合方式争议 | doc comment 明确语义 + 4 个测试覆盖（含 2 个回归测试）= 工程闭合 |
-| order-service.tangle A2 后仍失败 | diff-ir 仍有 1 SKIPPED | 调查失败原因；若是 TS 端 import 解析问题，作为 Phase 5 遗留项报告，不阻塞 v0.5.0 |
+| B4 "无代码改动"闭合方式被质疑不严谨 | 闭合方式争议 | doc comment 明确语义 + 4 个测试覆盖（含回归测试 `toggle_pending_cleared_on_non_checkbox_line`）= 工程闭合 |
+| order-service.tangle A2 后仍 SKIPPED | diff-ir 仍有 1 SKIPPED | 已确认根因是 B5 类型系统推迟项（Order/Err/Ok/Order.create 未解析），Phase 5 范围内不修复；成功标准已明确允许 1 SKIPPED，不阻塞 v0.5.0 |
