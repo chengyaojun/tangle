@@ -72,6 +72,10 @@ path = "tests/v03_phase3/js_codegen.rs"
 name = "py_go_codegen"
 path = "tests/v03_phase3/py_go_codegen.rs"
 
+[[test]]
+name = "snapshots"
+path = "tests/v03_phase3/snapshots.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
