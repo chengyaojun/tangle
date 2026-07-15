@@ -53,8 +53,12 @@ fn main() {
     let ts: Value = serde_json::from_str(&ts_json).expect("parse ts-ir JSON");
     let rs: Value = serde_json::from_str(&rs_json).expect("parse rs-ir JSON");
 
-    let ts_normalized = normalize(ts);
-    let rs_normalized = normalize(rs);
+    let ts_lifted = lift_functions(ts);
+    let rs_lifted = lift_functions(rs);
+    let ts_id_map = build_id_map(&ts_lifted);
+    let rs_id_map = build_id_map(&rs_lifted);
+    let ts_normalized = normalize(ts_lifted, &ts_id_map);
+    let rs_normalized = normalize(rs_lifted, &rs_id_map);
 
     if ts_normalized == rs_normalized {
         println!("MATCH");
@@ -111,10 +115,34 @@ fn lift_functions(v: Value) -> Value {
     Value::Object(map)
 }
 
-/// Recursively strip source span fields and sort object keys for stable
-/// comparison. Arrays are compared element-wise in their original order (node
-/// IDs are positional within the IR graph and meaningful).
-fn normalize(v: Value) -> Value {
+/// Phase 2 of normalization pipeline: build a mapping from original node IDs
+/// to positional IDs ("node0", "node1", ...).
+///
+/// TS IR uses semantic IDs (entry1, bind2, ret4), Rust IR uses positional IDs
+/// (n0, n1, n2). Both share the same node array order, so positional remapping
+/// produces identical IDs on both sides.
+fn build_id_map(v: &Value) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    if let Some(nodes) = v.get("nodes").and_then(|n| n.as_array()) {
+        for (i, node) in nodes.iter().enumerate() {
+            if let Some(id) = node.get("id").and_then(|id| id.as_str()) {
+                map.insert(id.to_string(), format!("node{}", i));
+            }
+        }
+    }
+    map
+}
+
+/// Recursively normalize an IR value for stable comparison:
+/// - strip source span fields (see `SPAN_FIELDS`)
+/// - strip null `guard` fields (F-008)
+/// - normalize label "return" → "exit" (F-011)
+/// - remap node IDs to positional ids via `id_map` (F-007)
+/// - sort object keys for stable comparison
+///
+/// Arrays are compared element-wise in their original order (node IDs are
+/// positional within the IR graph and meaningful).
+fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Value {
     match v {
         Value::Object(map) => {
             let mut filtered: Vec<(String, Value)> = Vec::with_capacity(map.len());
@@ -122,14 +150,36 @@ fn normalize(v: Value) -> Value {
                 if SPAN_FIELDS.contains(&k.as_str()) {
                     continue;
                 }
-                filtered.push((k, normalize(v)));
+                // F-008: strip null guard
+                if k == "guard" && v == Value::Null {
+                    continue;
+                }
+                // F-011: normalize label "return" → "exit"
+                if k == "label" {
+                    if let Some(s) = v.as_str() {
+                        if s == "return" {
+                            filtered.push((k, Value::String("exit".into())));
+                            continue;
+                        }
+                    }
+                }
+                // F-007: remap node IDs
+                if k == "id" || k == "from" || k == "to" || k == "entryNodeId" {
+                    if let Some(s) = v.as_str() {
+                        if let Some(remapped) = id_map.get(s) {
+                            filtered.push((k, Value::String(remapped.clone())));
+                            continue;
+                        }
+                    }
+                }
+                filtered.push((k, normalize(v, id_map)));
             }
             // Sort keys for stable comparison (ignores JSON key order)
             filtered.sort_by(|a, b| a.0.cmp(&b.0));
             let collected: Map<String, Value> = filtered.into_iter().collect();
             Value::Object(collected)
         }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(normalize).collect()),
+        Value::Array(arr) => Value::Array(arr.into_iter().map(|v| normalize(v, id_map)).collect()),
         other => other,
     }
 }
@@ -169,5 +219,44 @@ mod tests {
         let result = lift_functions(input);
         assert_eq!(result["nodes"][0]["id"], "entry");
         assert_eq!(result["entryNodeId"], "entry");
+    }
+
+    #[test]
+    fn id_remap_normalizes_n0_to_node0() {
+        let input = json!({
+            "nodes": [{"id": "n0"}, {"id": "n1"}],
+            "edges": [{"from": "n0", "to": "n1"}],
+            "entryNodeId": "n0"
+        });
+        let id_map = build_id_map(&input);
+        assert_eq!(id_map.get("n0"), Some(&"node0".to_string()));
+        assert_eq!(id_map.get("n1"), Some(&"node1".to_string()));
+    }
+
+    #[test]
+    fn id_remap_normalizes_entry1_to_node0() {
+        let input = json!({
+            "nodes": [{"id": "entry1"}, {"id": "bind2"}],
+            "entryNodeId": "entry1"
+        });
+        let id_map = build_id_map(&input);
+        assert_eq!(id_map.get("entry1"), Some(&"node0".to_string()));
+        assert_eq!(id_map.get("bind2"), Some(&"node1".to_string()));
+    }
+
+    #[test]
+    fn id_remap_applies_to_edges_and_entry() {
+        let input = json!({
+            "nodes": [{"id": "n0"}, {"id": "n1"}],
+            "edges": [{"from": "n0", "to": "n1", "kind": "control"}],
+            "entryNodeId": "n0"
+        });
+        let id_map = build_id_map(&input);
+        let normalized = normalize(input, &id_map);
+        assert_eq!(normalized["nodes"][0]["id"], "node0");
+        assert_eq!(normalized["nodes"][1]["id"], "node1");
+        assert_eq!(normalized["edges"][0]["from"], "node0");
+        assert_eq!(normalized["edges"][0]["to"], "node1");
+        assert_eq!(normalized["entryNodeId"], "node0");
     }
 }
