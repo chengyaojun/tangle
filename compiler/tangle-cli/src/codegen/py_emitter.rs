@@ -252,7 +252,9 @@ fn emit_single_function_py(
 }
 
 /// Multi-function emission: one Python function per heading-defined callable.
-/// The entry point calls `main()` only when a function named "main" exists.
+/// The entry point calls `main()` only when a function named "main" exists,
+/// capturing the Result, checking for errors, and printing the value —
+/// symmetric with single-function mode and the JS multi-function entry.
 fn emit_multi_function_py(functions: &[IRFunction]) -> String {
     let mut out = String::new();
     for func in functions {
@@ -267,7 +269,11 @@ fn emit_multi_function_py(functions: &[IRFunction]) -> String {
     if has_main {
         out.push_str("# Entry point\n");
         out.push_str("if __name__ == '__main__':\n");
-        out.push_str("    main()\n");
+        out.push_str("    result = main()\n");
+        out.push_str("    if not result.ok:\n");
+        out.push_str("        print(f'Error: {result.error}', file=__import__('sys').stderr)\n");
+        out.push_str("        exit(1)\n");
+        out.push_str("    print(result.value)\n");
     }
     out
 }

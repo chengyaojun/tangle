@@ -237,15 +237,35 @@ fn emit_single_function_go(
 }
 
 /// Multi-function emission: one Go function per heading-defined callable.
-/// Go's `func main()` is the auto entry point — no separate entry invocation needed.
+/// Non-main functions get a `Result` return type so their body's
+/// `return Ok(nil)` / `return Err(...)` statements compile. The `main`
+/// function is wrapped as `mainImpl() Result` plus a separate `func main()`
+/// entry that handles errors and prints the value — symmetric with
+/// single-function mode (`func main()` itself cannot have a return type).
 fn emit_multi_function_go(functions: &[IRFunction]) -> String {
     let mut out = String::new();
     for func in functions {
         let name = &func.name;
         // params are currently empty (IRFunction.params will be expanded in a future phase)
-        out.push_str(&format!("func {}() {{\n", name));
-        out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
-        out.push_str("}\n\n");
+        if name == "main" {
+            // Wrap main as mainImpl() Result so its `return Ok/Err` statements
+            // compile; `func main()` itself cannot declare a return type.
+            out.push_str("func mainImpl() Result {\n");
+            out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
+            out.push_str("}\n\n");
+            out.push_str("func main() {\n");
+            out.push_str("    result := mainImpl()\n");
+            out.push_str("    if !result.Ok {\n");
+            out.push_str("        fmt.Fprintf(os.Stderr, \"Error: %s\\n\", result.Error)\n");
+            out.push_str("        os.Exit(1)\n");
+            out.push_str("    }\n");
+            out.push_str("    fmt.Println(result.Value)\n");
+            out.push_str("}\n");
+        } else {
+            out.push_str(&format!("func {}() Result {{\n", name));
+            out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
+            out.push_str("}\n\n");
+        }
     }
     out
 }
