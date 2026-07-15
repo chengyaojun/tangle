@@ -222,7 +222,7 @@ $KnownDiffs = @()  # F-007~F-012 closed in Phase 4 via ir-diff normalization
 
 ### 4.6 B 组测试
 
-`tests/audit/ir-diff/tests/` 新增 ir-diff 自身的单元测试：
+`tests/audit/ir-diff/src/main.rs` 内 `#[cfg(test)] mod tests` 块（ir-diff 是二进制 crate，`normalize` 等函数需设为 `pub(crate)` 或在 test mod 内测试）：
 
 | 测试 | 验证内容 |
 |------|---------|
@@ -351,24 +351,26 @@ Fixture 更新：`tests/rules/feature-toggles.tangle.md` 扩展为包含 group/s
 | `compiler/tangle-cli/src/codegen/go_emitter.rs` | Go codegen + if/else if 分支 | 修改 |
 | `compiler/tangle-cli/src/ir/lower_rule_toggle.rs` | Toggle lowering 增强 | 修改 |
 | `compiler/tangle-cli/src/ir/compile_to_ir.rs` | Toggle 调用点签名同步 | 修改 |
-| `tests/audit/ir-diff/src/main.rs` | ir-diff 4 阶段归一化 | 修改 |
+| `compiler/tangle-cli/Cargo.toml` | 新增 2 个 `[[test]]` 条目 | 修改 |
+| `tests/audit/ir-diff/src/main.rs` | ir-diff 4 阶段归一化 + 内联单元测试 | 修改 |
 | `tests/audit/diff-ir.ps1` | 清空 $KnownDiffs | 修改 |
-| `compiler/tangle-cli/tests/v04_phase4/py_go_codegen.rs` | A 组测试 | 创建 |
-| `compiler/tangle-cli/tests/v04_phase4/toggle_lowering.rs` | C 组测试 | 创建 |
-| `tests/audit/ir-diff/tests/normalize_tests.rs` | B 组 ir-diff 单元测试 | 创建 |
+| `compiler/tangle-cli/tests/v04_phase4/py_go_codegen.rs` | A 组测试（Cargo name: `phase4_py_go_codegen`） | 创建 |
+| `compiler/tangle-cli/tests/v04_phase4/toggle_lowering.rs` | C 组测试（Cargo name: `phase4_toggle_lowering`） | 创建 |
 | `tests/rules/feature-toggles.tangle.md` | Toggle fixture 扩展 | 修改 |
 
 ## 7. 测试策略
 
-### 7.1 新增测试目录
+### 7.1 新增测试位置
 
-`compiler/tangle-cli/tests/v04_phase4/`（A 组 + C 组）
-`tests/audit/ir-diff/tests/`（B 组 ir-diff 自身测试）
+`compiler/tangle-cli/tests/v04_phase4/`（A 组 + C 组集成测试）
+`tests/audit/ir-diff/src/main.rs` 内 `#[cfg(test)] mod tests`（B 组 ir-diff 单元测试）
 
 ### 7.2 回归测试
 
 - 现有 `audit_regression/` 测试全绿（codegen 输出变化不影响 IR 级诊断）
-- 现有 Phase 3 测试全绿（`v03_phase3/` 目录）
+- 现有 Phase 3 `js_codegen.rs` / `span_tracking.rs` 测试全绿（JS emitter 不变）
+- **Phase 3 `py_go_codegen.rs` 全绿**：该测试仅用 Action + Terminal 节点（无 Decision），不受 if/else 改动影响
+- **Phase 3 `snapshots.rs` 快照需更新**：`snapshot_py_metadata_comments` / `snapshot_go_metadata_comments` 使用含 guarded 边的 Decision 图，A 组改动后 Py/Go 输出会新增 if/elif 或 if/else if 分支。实现时用 `INSTA_UPDATE=always cargo test --test snapshots` 重新生成这两个快照，验证新输出包含正确的 if/else 分支 + 元数据注释
 - 现有 Phase 2 快照测试匹配（IR 层无变化）
 - `diff-ir.ps1` 保持 0 unexpected DIFF（4 KNOWN_DIFF 转 MATCH）
 
@@ -380,8 +382,9 @@ Fixture 更新：`tests/rules/feature-toggles.tangle.md` 扩展为包含 group/s
 | 2. Clippy | `cargo clippy --workspace --all-targets -- -D warnings` | 0 警告 |
 | 3. 审计回归 | `tests/audit/run-audit.ps1` | 0 failing |
 | 4. 差分测试 | `tests/audit/diff-ir.ps1` | 0 KNOWN_DIFF + 0 unexpected DIFF |
-| 5. Phase 3 回归 | `cargo test --test js_codegen --test py_go_codegen --test span_tracking --test snapshots` | 全绿 |
-| 6. Phase 4 新测试 | `cargo test --test v04_phase4` | 全绿 |
+| 5. Phase 3 回归 | `cargo test --test js_codegen --test py_go_codegen --test span_tracking` | 全绿（snapshots.rs 单独处理，见 §7.2） |
+| 5b. Phase 3 快照更新 | `INSTA_UPDATE=always cargo test --test snapshots` 后人工审查 | Py/Go 快照含 if/else 分支 + 元数据注释 |
+| 6. Phase 4 新测试 | `cargo test --test phase4_py_go_codegen --test phase4_toggle_lowering` + `cargo test --manifest-path tests/audit/ir-diff/Cargo.toml` | 全绿 |
 | 7. Toggle fixture | `cargo run -- build tests/rules/feature-toggles.tangle.md --emit-ir` | IR 含 span + 正确名称 |
 
 ## 9. 不在 Phase 4 范围内
@@ -397,7 +400,7 @@ Fixture 更新：`tests/rules/feature-toggles.tangle.md` 扩展为包含 group/s
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| Py/Go if/else 发射改变现有 codegen 输出 | 现有测试可能失败 | 更新受影响测试；IR 级测试不受影响 |
+| Py/Go if/else 发射改变现有 codegen 输出 | Phase 3 `snapshots.rs` 的 Py/Go 快照失效 | 用 `INSTA_UPDATE=always` 重新生成，人工审查新输出含 if/else 分支；`py_go_codegen.rs` 不受影响（无 Decision 节点） |
 | ir-diff ID 重映射前提（nodes 顺序一致）不成立 | 归一化后仍 DIFF | 审计已确认顺序一致；端到端测试验证 4 fixture |
 | toggle 签名改动影响 compile_to_ir 调用 | 编译失败 | 同步修改调用点，编译验证 |
 | group/style HTML 注释语法与现有 fixture 冲突 | 现有 fixture 行为变化 | 现有 fixture 不含 HTML 注释，无冲突 |
