@@ -1,3 +1,4 @@
+use tangle_cli::codegen::go_emitter::emit_go;
 use tangle_cli::codegen::py_emitter::emit_python;
 use tangle_cli::ir::graph::*;
 
@@ -37,4 +38,20 @@ fn py_emits_edge_type_comments() {
     let py = emit_python(&graph, "TestModule");
     assert!(py.contains("# edge: dashed"), "Python should emit edge type comment, got:\n{}", py);
     assert!(py.contains("# edge-style: stroke:#f00"), "Python should emit edge style comment, got:\n{}", py);
+}
+
+#[test]
+fn go_emits_group_style_comments() {
+    let graph = make_graph_with_metadata();
+    let go = emit_go(&graph, "TestModule");
+    assert!(go.contains("// group: Approval"), "Go should emit group comment, got:\n{}", go);
+    assert!(go.contains("// style: highlight"), "Go should emit style comment, got:\n{}", go);
+}
+
+#[test]
+fn go_emits_edge_type_comments() {
+    let graph = make_graph_with_metadata();
+    let go = emit_go(&graph, "TestModule");
+    assert!(go.contains("// edge: dashed"), "Go should emit edge type comment, got:\n{}", go);
+    assert!(go.contains("// edge-style: stroke:#f00"), "Go should emit edge style comment, got:\n{}", go);
 }
