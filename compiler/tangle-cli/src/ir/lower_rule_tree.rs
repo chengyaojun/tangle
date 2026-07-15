@@ -27,8 +27,7 @@ pub fn lower_rule_tree(
             diagnostics.push(TangleDiagnostic {
                 code: "TANGLE_RULE_EMPTY_BRANCH".into(),
                 message: format!("branch '{}' has no conditions or action", branch.text),
-                // TODO: track line numbers through parse_list_to_tree to provide accurate spans
-                span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
+                span: SourceSpan { file: _file.into(), start_line: branch.line, start_column: 0, end_line: branch.line, end_column: 0 },
             });
             continue;
         }
@@ -38,8 +37,7 @@ pub fn lower_rule_tree(
             diagnostics.push(TangleDiagnostic {
                 code: "TANGLE_RULE_NO_ACTION".into(),
                 message: format!("branch '{}' has no Action: marker", branch.text),
-                // TODO: track line numbers through parse_list_to_tree to provide accurate spans
-                span: SourceSpan { file: _file.into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 },
+                span: SourceSpan { file: _file.into(), start_line: branch.line, start_column: 0, end_line: branch.line, end_column: 0 },
             });
         }
 
@@ -135,14 +133,15 @@ pub fn lower_rule_tree(
 pub struct ListNode {
     pub text: String,
     pub depth: usize,
+    pub line: usize,
     pub children: Vec<ListNode>,
 }
 
 /// 解析嵌套列表为缩进感知的树结构。
 /// 每 4 空格或 1 tab = 1 级深度。
 pub fn parse_list_to_tree(markdown: &str) -> Vec<ListNode> {
-    let mut items: Vec<(usize, String)> = vec![];
-    for line in markdown.lines() {
+    let mut items: Vec<(usize, String, usize)> = vec![]; // (depth, text, line)
+    for (line_no, line) in markdown.lines().enumerate() {
         let trimmed = line.trim_start();
         if !trimmed.starts_with("* ") && !trimmed.starts_with("- ") {
             continue;
@@ -154,7 +153,7 @@ pub fn parse_list_to_tree(markdown: &str) -> Vec<ListNode> {
             .trim_start_matches("- ")
             .trim()
             .to_string();
-        items.push((depth, text));
+        items.push((depth, text, line_no + 1)); // 1-based
     }
     let mut idx = 0;
     build_tree(&items, 0, &mut idx)
@@ -182,10 +181,10 @@ fn compute_depth_from_str(leading: &str) -> usize {
     depth
 }
 
-fn build_tree(items: &[(usize, String)], target_depth: usize, idx: &mut usize) -> Vec<ListNode> {
+fn build_tree(items: &[(usize, String, usize)], target_depth: usize, idx: &mut usize) -> Vec<ListNode> {
     let mut nodes = vec![];
     while *idx < items.len() {
-        let (depth, ref text) = items[*idx];
+        let (depth, ref text, line) = items[*idx];
         if depth < target_depth {
             break;
         }
@@ -195,6 +194,7 @@ fn build_tree(items: &[(usize, String)], target_depth: usize, idx: &mut usize) -
             nodes.push(ListNode {
                 text: text.clone(),
                 depth: target_depth,
+                line,
                 children,
             });
         } else {
