@@ -64,6 +64,10 @@ path = "tests/v03_phase2/snapshots.rs"
 name = "span_tracking"
 path = "tests/v03_phase3/span_tracking.rs"
 
+[[test]]
+name = "js_codegen"
+path = "tests/v03_phase3/js_codegen.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }

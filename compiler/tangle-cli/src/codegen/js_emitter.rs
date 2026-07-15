@@ -211,6 +211,18 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
     out
 }
 
+/// Emit metadata comments (group, style) for a node. Returns comment lines with given indent.
+fn emit_node_comments(node: &IRNode, indent: &str) -> String {
+    let mut out = String::new();
+    if let Some(ref group) = node.group {
+        out.push_str(&format!("{}// group: {}\n", indent, group));
+    }
+    if let Some(ref style) = node.style {
+        out.push_str(&format!("{}// style: {}\n", indent, style));
+    }
+    out
+}
+
 /// Emit the body of one function (BFS traversal + Result protocol), wrapped in
 /// try/catch when any statement uses the `?` propagation operator. Returns the
 /// indented body lines WITHOUT the surrounding `function ... { }`.
@@ -234,6 +246,8 @@ fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str
             continue;
         }
         visited.insert(&node.id);
+
+        out.push_str(&emit_node_comments(node, "  "));
 
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
