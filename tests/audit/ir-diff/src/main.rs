@@ -69,6 +69,48 @@ fn main() {
     }
 }
 
+/// Phase 1 of normalization pipeline: lift functions[0] to top-level.
+///
+/// Rust IR wraps nodes/edges/entryNodeId inside `functions[0]`, while TS IR
+/// places them at top level. This function promotes functions[0] to top level
+/// and strips the `functions`, empty `importedStdlib`, and empty `stdlibImports`
+/// keys. If `functions` is absent or empty, the input is returned unchanged
+/// (minus empty stdlib arrays).
+fn lift_functions(v: Value) -> Value {
+    let mut map = match v {
+        Value::Object(m) => m,
+        other => return other,
+    };
+
+    // Lift functions[0] if present
+    if let Some(functions_val) = map.remove("functions") {
+        if let Value::Array(arr) = functions_val {
+            if let Some(first) = arr.into_iter().next() {
+                if let Value::Object(func_map) = first {
+                    for (k, v) in func_map {
+                        // Don't overwrite existing top-level keys
+                        map.entry(k).or_insert(v);
+                    }
+                }
+            }
+        }
+    }
+
+    // Strip empty stdlib arrays
+    if let Some(Value::Array(arr)) = map.get("importedStdlib") {
+        if arr.is_empty() {
+            map.remove("importedStdlib");
+        }
+    }
+    if let Some(Value::Array(arr)) = map.get("stdlibImports") {
+        if arr.is_empty() {
+            map.remove("stdlibImports");
+        }
+    }
+
+    Value::Object(map)
+}
+
 /// Recursively strip source span fields and sort object keys for stable
 /// comparison. Arrays are compared element-wise in their original order (node
 /// IDs are positional within the IR graph and meaningful).
@@ -89,5 +131,43 @@ fn normalize(v: Value) -> Value {
         }
         Value::Array(arr) => Value::Array(arr.into_iter().map(normalize).collect()),
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn lift_functions_promotes_first_function_to_top_level() {
+        let input = json!({
+            "functions": [{
+                "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
+                "edges": [{"from": "n0", "to": "n1", "kind": "control"}],
+                "entryNodeId": "n0"
+            }],
+            "importedStdlib": [],
+            "stdlibImports": []
+        });
+        let result = lift_functions(input);
+        assert!(result.get("functions").is_none(), "functions should be removed");
+        assert!(result.get("importedStdlib").is_none(), "empty importedStdlib should be removed");
+        assert!(result.get("stdlibImports").is_none(), "empty stdlibImports should be removed");
+        assert_eq!(result["entryNodeId"], "n0");
+        assert_eq!(result["nodes"][0]["id"], "n0");
+        assert_eq!(result["edges"][0]["from"], "n0");
+    }
+
+    #[test]
+    fn lift_functions_preserves_flat_ir_without_functions_key() {
+        let input = json!({
+            "nodes": [{"id": "entry", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "entry"
+        });
+        let result = lift_functions(input);
+        assert_eq!(result["nodes"][0]["id"], "entry");
+        assert_eq!(result["entryNodeId"], "entry");
     }
 }
