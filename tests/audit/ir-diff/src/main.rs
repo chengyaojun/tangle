@@ -7,7 +7,7 @@
 //! Exit code 0 = MATCH, 1 = DIFF (prints first difference to stderr), 2 = usage
 //! error.
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::env;
 use std::fs;
 use std::process::exit;
@@ -53,12 +53,7 @@ fn main() {
     let ts: Value = serde_json::from_str(&ts_json).expect("parse ts-ir JSON");
     let rs: Value = serde_json::from_str(&rs_json).expect("parse rs-ir JSON");
 
-    let ts_lifted = lift_functions(ts);
-    let rs_lifted = lift_functions(rs);
-    let ts_id_map = build_id_map(&ts_lifted);
-    let rs_id_map = build_id_map(&rs_lifted);
-    let ts_normalized = normalize(ts_lifted, &ts_id_map);
-    let rs_normalized = normalize(rs_lifted, &rs_id_map);
+    let (ts_normalized, rs_normalized) = compare_functions(ts, rs);
 
     if ts_normalized == rs_normalized {
         println!("MATCH");
@@ -80,6 +75,11 @@ fn main() {
 /// and strips the `functions`, empty `importedStdlib`, and empty `stdlibImports`
 /// keys. If `functions` is absent or empty, the input is returned unchanged
 /// (minus empty stdlib arrays).
+///
+/// Superseded by `compare_functions` (which handles multi-function arrays) in
+/// the production `main` path. Retained for the single-function unit tests
+/// that still exercise this behavior directly.
+#[allow(dead_code)]
 fn lift_functions(v: Value) -> Value {
     let mut map = match v {
         Value::Object(m) => m,
@@ -186,6 +186,70 @@ fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Va
         Value::Array(arr) => Value::Array(arr.into_iter().map(|v| normalize(v, id_map)).collect()),
         other => other,
     }
+}
+
+/// Compare two IRs' functions[] arrays (or wrap top-level as single function).
+/// Returns (ts_normalized, rs_normalized) as JSON arrays sorted by function.name.
+///
+/// Replaces the single-function `lift_functions` path: Rust IR may carry
+/// multiple functions (e.g. payment has `main` + `process`), and TS IR has
+/// no `functions[]` concept (top-level nodes/edges). Both sides are normalized
+/// to a `Vec<Function>` sorted by name so `main` aligns with `main` regardless
+/// of input order.
+fn compare_functions(ts: Value, rs: Value) -> (Value, Value) {
+    let ts_arr = extract_functions_array(&ts);
+    let rs_arr = extract_functions_array(&rs);
+
+    // Sort by name so functions align across the two IRs
+    let mut ts_sorted = ts_arr.clone();
+    let mut rs_sorted = rs_arr.clone();
+    ts_sorted.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    rs_sorted.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+
+    // Normalize each function independently (id map is per-function scope)
+    let ts_norm: Vec<Value> = ts_sorted.iter().map(normalize_function).collect();
+    let rs_norm: Vec<Value> = rs_sorted.iter().map(normalize_function).collect();
+
+    (Value::Array(ts_norm), Value::Array(rs_norm))
+}
+
+/// Extract the `functions[]` array, or wrap top-level nodes/edges as a single
+/// function named "module" (for TS-style flat IR without `functions[]`).
+fn extract_functions_array(ir: &Value) -> Vec<Value> {
+    if let Some(funcs) = ir.get("functions").and_then(|f| f.as_array()) {
+        if !funcs.is_empty() {
+            return funcs.clone();
+        }
+    }
+    // Wrap top-level IR as a single function. Includes `errorEdges` so the
+    // wrapped shape matches an extracted Rust function (which carries it).
+    vec![json!({
+        "name": "module",
+        "nodes": ir.get("nodes").cloned().unwrap_or(Value::Array(vec![])),
+        "edges": ir.get("edges").cloned().unwrap_or(Value::Array(vec![])),
+        "errorEdges": ir.get("errorEdges").cloned().unwrap_or(Value::Array(vec![])),
+        "entryNodeId": ir.get("entryNodeId").cloned().unwrap_or(Value::Null),
+    })]
+}
+
+/// Normalize a single function's IR: build a per-function id map and apply
+/// the standard `normalize` transform (strip spans, remap ids, sort keys).
+///
+/// Function metadata (`name`/`params`/`receiver`) is stripped before
+/// normalization — only structural IR fields (`nodes`/`edges`/`errorEdges`/
+/// `entryNodeId`) participate in comparison. This mirrors the old
+/// `lift_functions` LIFT_FIELDS allowlist and lets an extracted Rust function
+/// (named "main") match a TS-wrapped module (named "module") when their
+/// graph structure is identical.
+fn normalize_function(func: &Value) -> Value {
+    let id_map = build_id_map(func);
+    let mut stripped = func.clone();
+    if let Value::Object(map) = &mut stripped {
+        map.remove("name");
+        map.remove("params");
+        map.remove("receiver");
+    }
+    normalize(stripped, &id_map)
 }
 
 #[cfg(test)]
@@ -336,5 +400,81 @@ mod tests {
         let id_map = std::collections::HashMap::new();
         let result = normalize(input, &id_map);
         assert_eq!(result["nodes"][0]["label"], "exit");
+    }
+
+    #[test]
+    fn compare_functions_aligns_by_name() {
+        // 模拟 Rust IR: functions[main, process]
+        let rs = json!({
+            "functions": [
+                {"name": "main", "nodes": [{"id": "n0", "kind": "compute", "label": "a"}], "edges": [], "entryNodeId": "n0"},
+                {"name": "process", "nodes": [{"id": "n1", "kind": "compute", "label": "b"}], "edges": [], "entryNodeId": "n1"}
+            ]
+        });
+        // 模拟 TS IR: functions[process, main]（顺序不同）
+        let ts = json!({
+            "functions": [
+                {"name": "process", "nodes": [{"id": "entry1", "kind": "compute", "label": "b"}], "edges": [], "entryNodeId": "entry1"},
+                {"name": "main", "nodes": [{"id": "entry2", "kind": "compute", "label": "a"}], "edges": [], "entryNodeId": "entry2"}
+            ]
+        });
+
+        let (ts_norm, rs_norm) = compare_functions(ts, rs);
+        let ts_arr = ts_norm.as_array().unwrap();
+        let rs_arr = rs_norm.as_array().unwrap();
+        assert_eq!(ts_arr.len(), 2);
+        assert_eq!(rs_arr.len(), 2);
+        // 按 name 排序后对齐：main(a) 与 main(a) 对齐，process(b) 与 process(b) 对齐
+        // (name 字段在归一化时被剥离，因此通过 node label 验证对齐)
+        assert_eq!(ts_arr[0]["nodes"][0]["label"], rs_arr[0]["nodes"][0]["label"]);
+        assert_eq!(ts_arr[1]["nodes"][0]["label"], rs_arr[1]["nodes"][0]["label"]);
+        // 排序后第一项是 label "a" (name "main")，第二项是 label "b" (name "process")
+        assert_eq!(ts_arr[0]["nodes"][0]["label"], "a");
+        assert_eq!(ts_arr[1]["nodes"][0]["label"], "b");
+    }
+
+    #[test]
+    fn compare_functions_wraps_single_when_no_functions_array() {
+        // 无 functions[] 的 IR（如 expression）包装为单 function 数组
+        let rs = json!({
+            "nodes": [{"id": "n0", "kind": "compute", "label": "a"}],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let ts = json!({
+            "nodes": [{"id": "entry1", "kind": "compute", "label": "a"}],
+            "edges": [],
+            "entryNodeId": "entry1"
+        });
+
+        let (ts_norm, rs_norm) = compare_functions(ts, rs);
+        let ts_arr = ts_norm.as_array().unwrap();
+        let rs_arr = rs_norm.as_array().unwrap();
+        assert_eq!(ts_arr.len(), 1);
+        assert_eq!(rs_arr.len(), 1);
+        // 包装后应保留原 nodes 的内容（name 等元数据被剥离）
+        assert_eq!(ts_arr[0]["nodes"][0]["label"], "a");
+        assert_eq!(rs_arr[0]["nodes"][0]["label"], "a");
+        assert_eq!(ts_arr[0], rs_arr[0], "wrapped ts and rs should be equal after normalization");
+    }
+
+    #[test]
+    fn compare_functions_matches_cross_side_extracted_vs_wrapped() {
+        // Rust: functions[main] 携带元数据 (name/params/receiver/errorEdges)
+        let rs = json!({
+            "functions": [
+                {"name": "main", "nodes": [{"id": "n0", "kind": "compute", "label": "a"}], "edges": [], "errorEdges": [], "entryNodeId": "n0", "params": [], "receiver": null}
+            ]
+        });
+        // TS: 无 functions[]，顶层 nodes/edges (包装为 module)
+        let ts = json!({
+            "nodes": [{"id": "entry1", "kind": "compute", "label": "a"}],
+            "edges": [],
+            "entryNodeId": "entry1"
+        });
+
+        let (ts_norm, rs_norm) = compare_functions(ts, rs);
+        // 元数据被剥离后，两边应 MATCH（expression/hello 场景）
+        assert_eq!(ts_norm, rs_norm, "extracted function should match wrapped module after metadata strip");
     }
 }
