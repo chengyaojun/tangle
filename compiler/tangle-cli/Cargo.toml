@@ -76,6 +76,14 @@ path = "tests/v03_phase3/py_go_codegen.rs"
 name = "snapshots"
 path = "tests/v03_phase3/snapshots.rs"
 
+[[test]]
+name = "phase4_py_go_codegen"
+path = "tests/v04_phase4/py_go_codegen.rs"
+
+[[test]]
+name = "phase4_toggle_lowering"
+path = "tests/v04_phase4/toggle_lowering.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }

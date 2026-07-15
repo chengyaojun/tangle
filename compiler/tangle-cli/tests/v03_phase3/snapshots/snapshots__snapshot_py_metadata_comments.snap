@@ -22,17 +22,16 @@ def Err(variant: str, value: Any = None) -> Result:
 
 def ApprovalFlow() -> Result:
     # group: Approval
-    # decision: check
+    if (amount < 100):
+        # group: Approval
+        # style: highlight
+        # action: auto_approve
+        return Ok(None)
     # edge-style: stroke:#f00
-    # edge: crossed
-    # group: Approval
-    # style: highlight
-    # action: auto_approve
-    # edge: dashed
-    # action: manual_review
-    # edge: thick
-    # action: reject
-    return Ok(None)
+    elif (amount < 1000):
+        # action: manual_review
+        return Ok(None)
+    # skipped: crossed edge to reject
 
 # Entry point
 if __name__ == '__main__':
