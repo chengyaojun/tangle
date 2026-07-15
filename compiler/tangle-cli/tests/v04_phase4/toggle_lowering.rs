@@ -48,3 +48,36 @@ fn toggle_malformed_checkbox_emits_diagnostic() {
     assert!(diags.iter().any(|d| d.code == "TANGLE_RULE_TOGGLE_MALFORMED"),
         "should emit MALFORMED diagnostic, got: {:?}", diags);
 }
+
+#[test]
+fn toggle_group_style_metadata_attached() {
+    let md = "<!-- group: Approval -->\n<!-- style: highlight -->\n- [x] enable_new_ui: true";
+    let (graph, _diags) = lower_rule_toggle(md, "test.tangle", &mut fresh_id_gen());
+    // nodes[0] is entry, nodes[1] is the checkbox
+    assert_eq!(graph.nodes[1].group.as_deref(), Some("Approval"), "group should be attached");
+    assert_eq!(graph.nodes[1].style.as_deref(), Some("highlight"), "style should be attached");
+}
+
+#[test]
+fn toggle_group_style_pending_cleared_on_non_checkbox() {
+    let md = "<!-- group: Approval -->\nSome text\n- [x] enable_new_ui: true";
+    let (graph, _diags) = lower_rule_toggle(md, "test.tangle", &mut fresh_id_gen());
+    // The "Some text" line should clear the pending group
+    assert!(graph.nodes[1].group.is_none(), "group should be cleared by non-checkbox line");
+}
+
+#[test]
+fn toggle_group_style_survives_blank_lines() {
+    let md = "<!-- group: Approval -->\n\n- [x] enable_new_ui: true";
+    let (graph, _diags) = lower_rule_toggle(md, "test.tangle", &mut fresh_id_gen());
+    assert_eq!(graph.nodes[1].group.as_deref(), Some("Approval"), "group should survive blank line");
+}
+
+#[test]
+fn toggle_signature_returns_diagnostics_vec() {
+    let md = "- [x] ok: true";
+    let result = lower_rule_toggle(md, "test.tangle", &mut fresh_id_gen());
+    // Verify the return type is a tuple
+    let (_graph, _diags): (RuleGraph, Vec<TangleDiagnostic>) = result;
+    // If this compiles, the signature is correct
+}

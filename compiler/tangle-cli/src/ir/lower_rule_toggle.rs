@@ -146,6 +146,10 @@ fn is_valid_identifier(s: &str) -> bool {
 /// Returns (key, value) if the comment matches the metadata pattern.
 fn parse_html_comment(line: &str) -> Option<(&'static str, String)> {
     let trimmed = line.trim();
+    // 需要至少 "<!--x-->" (8 字符) 才能安全 slicing
+    if trimmed.len() < 8 {
+        return None;
+    }
     if !trimmed.starts_with("<!--") || !trimmed.ends_with("-->") {
         return None;
     }
