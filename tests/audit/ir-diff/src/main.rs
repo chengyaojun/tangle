@@ -259,4 +259,72 @@ mod tests {
         assert_eq!(normalized["edges"][0]["to"], "node1");
         assert_eq!(normalized["entryNodeId"], "node0");
     }
+
+    #[test]
+    fn end_to_end_expression_style_fixture_matches() {
+        // Simulate TS IR (semantic IDs, flat structure, return label)
+        let ts = json!({
+            "nodes": [
+                {"id": "entry1", "kind": "action", "label": "main"},
+                {"id": "ret4", "kind": "terminal", "label": "return"}
+            ],
+            "edges": [
+                {"from": "entry1", "to": "ret4", "kind": "control", "guard": null}
+            ],
+            "entryNodeId": "entry1"
+        });
+        // Simulate Rust IR (positional IDs, functions wrapper, exit label)
+        let rs = json!({
+            "functions": [{
+                "nodes": [
+                    {"id": "n0", "kind": "action", "label": "main"},
+                    {"id": "n1", "kind": "terminal", "label": "exit"}
+                ],
+                "edges": [
+                    {"from": "n0", "to": "n1", "kind": "control", "guard": null}
+                ],
+                "entryNodeId": "n0"
+            }],
+            "importedStdlib": [],
+            "stdlibImports": []
+        });
+
+        let ts_lifted = lift_functions(ts);
+        let rs_lifted = lift_functions(rs);
+        let ts_id_map = build_id_map(&ts_lifted);
+        let rs_id_map = build_id_map(&rs_lifted);
+        let ts_norm = normalize(ts_lifted, &ts_id_map);
+        let rs_norm = normalize(rs_lifted, &rs_id_map);
+        assert_eq!(ts_norm, rs_norm, "TS and Rust IR should match after normalization");
+    }
+
+    #[test]
+    fn null_guard_stripped() {
+        let input = json!({
+            "edges": [{"from": "n0", "to": "n1", "kind": "control", "guard": null}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert!(result["edges"][0].get("guard").is_none(), "null guard should be stripped");
+    }
+
+    #[test]
+    fn non_null_guard_preserved() {
+        let input = json!({
+            "edges": [{"from": "n0", "to": "n1", "kind": "condition", "guard": "x > 0"}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert_eq!(result["edges"][0]["guard"], "x > 0");
+    }
+
+    #[test]
+    fn return_label_normalized_to_exit() {
+        let input = json!({
+            "nodes": [{"id": "n0", "kind": "terminal", "label": "return"}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert_eq!(result["nodes"][0]["label"], "exit");
+    }
 }

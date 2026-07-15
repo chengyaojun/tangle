@@ -29,12 +29,7 @@ Set-Location $root
 # sourceText field, terminal node label). All are documented in
 # docs/audit/findings.md and will be resolved in v0.3.0 via ir-diff
 # normalization or IR schema unification.
-$KnownDiffs = @(
-    "expression.tangle",   # F-007/F-008/F-009/F-011/F-012
-    "hello.tangle",        # F-007/F-008/F-009/F-011/F-012
-    "user.tangle",         # F-007/F-008/F-009/F-011/F-012
-    "payment.tangle"       # F-007/F-008/F-009/F-011/F-012 (fixture fixed in F-006)
-)
+$KnownDiffs = @()  # F-007~F-012 closed in Phase 4 via ir-diff normalization
 
 # --- Build ir-diff if needed -------------------------------------------------
 $irDiffBin = Join-Path $PSScriptRoot "ir-diff\target\release\ir-diff.exe"
