@@ -150,7 +150,22 @@ pub fn parse_markdown(source: &str, _file: &str) -> Vec<MarkdownNode> {
                 current_text.push_str(&text);
                 current_text.push('`');
             }
-            Event::InlineHtml(html) | Event::Html(html) => { current_text.push_str(&html); }
+            Event::InlineHtml(html) | Event::Html(html) => {
+                flush_text(&mut current_text, &mut current_position, &mut stack);
+                let pos = offset_to_position(source, start, end);
+                let html_node = MarkdownNode {
+                    node_type: "html".into(),
+                    children: vec![],
+                    value: Some(html.to_string()),
+                    depth: None, lang: None, url: None, checked: None,
+                    position: Some(pos),
+                };
+                if let Some(parent) = stack.last_mut() {
+                    parent.children.push(html_node);
+                } else {
+                    root_children.push(html_node);
+                }
+            }
             Event::SoftBreak | Event::HardBreak => { current_text.push(' '); }
             Event::TaskListMarker(checked) => {
                 if let Some(parent) = stack.last_mut() { parent.checked = Some(checked); }
@@ -191,5 +206,32 @@ impl MarkdownNode {
             end_line: p.end_line,
             end_column: p.end_column,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_comment_preserved_as_node_with_position() {
+        let source = "# Test\n\n<!-- group: UI -->\n\nText";
+        let nodes = parse_markdown(source, "test.md");
+        // HTML comment should be a node with type "html" and a position
+        let html_node = nodes.iter().find(|n| n.node_type == "html");
+        assert!(html_node.is_some(), "HTML comment should be preserved as a node, got nodes: {:?}",
+            nodes.iter().map(|n| &n.node_type).collect::<Vec<_>>());
+        let node = html_node.unwrap();
+        assert!(node.value.as_deref().unwrap_or("").contains("group: UI"),
+            "html node value should contain the comment text");
+        assert!(node.position.is_some(), "html node should have a position");
+    }
+
+    #[test]
+    fn html_comment_at_root_level_not_dropped() {
+        let source = "# Heading\n\n<!-- group: X -->\n\n- [x] item: true";
+        let nodes = parse_markdown(source, "test.md");
+        let has_html = nodes.iter().any(|n| n.node_type == "html");
+        assert!(has_html, "HTML comment at root level should not be dropped");
     }
 }
