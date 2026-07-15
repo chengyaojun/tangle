@@ -9,6 +9,7 @@ pub enum Type {
     Function(FunctionType),
     Interface(InterfaceType),
     Var(TypeVariable),
+    Any,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub struct GenericTypeInstance {
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub returns: Box<Type>,
+    pub is_variadic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,9 +57,13 @@ pub struct TypeVariable {
 pub struct CallableSignature {
     pub params: Vec<(String, Type)>,
     pub returns: Type,
+    pub is_variadic: bool,
 }
 
 pub fn types_equal(a: &Type, b: &Type) -> bool {
+    if matches!(a, Type::Any) || matches!(b, Type::Any) {
+        return true;
+    }
     match (a, b) {
         (Type::Primitive(a), Type::Primitive(b)) => a.name == b.name,
         (Type::Struct(a), Type::Struct(b)) => a.name == b.name,
@@ -67,11 +73,14 @@ pub fn types_equal(a: &Type, b: &Type) -> bool {
 }
 
 pub fn is_subtype(sub: &Type, sup: &Type) -> bool {
+    if matches!(sup, Type::Any) {
+        return true;
+    }
     match (sub, sup) {
         (Type::Struct(s), Type::Interface(i)) => i
             .methods
             .iter()
-            .all(|(name, sig)| s.methods.get(name).map_or(false, |ms| callable_sigs_match(ms, sig))),
+            .all(|(name, sig)| s.methods.get(name).is_some_and(|ms| callable_sigs_match(ms, sig))),
         _ => types_equal(sub, sup),
     }
 }
@@ -120,6 +129,7 @@ mod tests {
                 .map(|(n, t)| (n.to_string(), t))
                 .collect(),
             returns,
+            is_variadic: false,
         }
     }
 
@@ -248,5 +258,52 @@ mod tests {
             prim("String"),
         );
         assert!(!callable_sigs_match(&a, &e));
+    }
+
+    // --- 7. Type::Any matches everything ---
+
+    #[test]
+    fn types_equal_any_matches_all() {
+        let any = Type::Any;
+        let str_t = prim("String");
+        let int_t = prim("Int");
+        let struct_t = struct_type("Foo");
+
+        assert!(types_equal(&any, &str_t));
+        assert!(types_equal(&str_t, &any));
+        assert!(types_equal(&any, &int_t));
+        assert!(types_equal(&any, &struct_t));
+        assert!(types_equal(&any, &any));
+    }
+
+    // --- 8. is_subtype with Any as top type ---
+
+    #[test]
+    fn is_subtype_any_is_top() {
+        let any = Type::Any;
+        let str_t = prim("String");
+        let struct_t = struct_type("Foo");
+
+        assert!(is_subtype(&str_t, &any));
+        assert!(is_subtype(&struct_t, &any));
+        assert!(is_subtype(&any, &any));
+    }
+
+    // --- 9. FunctionType has is_variadic field ---
+
+    #[test]
+    fn function_type_variadic() {
+        let fixed = FunctionType {
+            params: vec![prim("Int")],
+            returns: Box::new(prim("Bool")),
+            is_variadic: false,
+        };
+        let variadic = FunctionType {
+            params: vec![prim("String")],
+            returns: Box::new(prim("Void")),
+            is_variadic: true,
+        };
+        assert!(!fixed.is_variadic);
+        assert!(variadic.is_variadic);
     }
 }

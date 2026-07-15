@@ -8,6 +8,7 @@ use crate::checker::check::check_expression;
 use crate::parser::lexer::tokenize;
 use crate::parser::parser::parse_code_body;
 use std::collections::HashMap;
+use crate::stdlib::signatures::{stdlib_signature, stdlib_module_signatures};
 
 #[derive(Debug, Clone)]
 pub struct CheckedModule {
@@ -50,55 +51,36 @@ fn is_stdlib_import(target: &str) -> bool {
     !target.contains('/') && !target.contains('\\') && !target.starts_with('.')
 }
 
-fn stdlib_ops(name: &str) -> Option<&'static [&'static str]> {
-    match name {
-        "fmt" => Some(&["print", "println", "input", "debug", "error", "format"]),
-        "IO"  => Some(&["readFile", "writeFile", "exists", "stat", "mkdir", "read_dir", "remove", "rename", "copy", "chmod", "size", "is_dir", "is_file"]),
-        "List" => Some(&["length", "map", "filter", "push", "get"]),
-        "Map"  => Some(&["get", "set", "has", "keys", "values", "delete"]),
-        "Set"  => Some(&["add", "remove", "contains", "size", "union", "intersection", "difference", "to_list"]),
-        "Option" => Some(&["Some", "None", "unwrap", "is_some", "is_none", "map", "or_else"]),
-        "Math" => Some(&["abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow"]),
-        "String" => Some(&["length", "concat", "split", "replace", "to_upper", "to_lower", "trim", "contains"]),
-        "Env"  => Some(&["get", "set", "remove", "args", "current_dir", "exit"]),
-        "Path" => Some(&["join", "basename", "dirname", "extension", "is_absolute", "normalize", "relative", "split"]),
-        _ => None,
-    }
-}
-
 fn resolve_stdlib_imports(imports: &[TangleImport], env: &mut TypeEnv) {
     for imp in imports {
         if !is_stdlib_import(&imp.target) { continue; }
-        if let Some(operations) = stdlib_ops(&imp.target) {
-            // Split comma-separated aliases: [print, println](fmt)
-            let aliases: Vec<&str> = imp.alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-            let fn_import = aliases.len() > 1
-                || (aliases.len() == 1 && operations.contains(&aliases[0]));
+        if stdlib_module_signatures(&imp.target).is_none() { continue; }
 
-            if fn_import {
-                // Function import: [println](fmt) -> inject each as variable
-                for alias in &aliases {
-                    if operations.contains(alias) {
-                        env.variables.insert(alias.to_string(), Type::Function(FunctionType {
-                            params: vec![],
-                            returns: Box::new(Type::Primitive(PrimitiveType { name: "String".into() })),
-                        }));
-                    }
+        let aliases: Vec<&str> = imp.alias.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let fn_import = aliases.len() > 1
+            || (aliases.len() == 1 && stdlib_signature(&imp.target, aliases[0]).is_some());
+
+        if fn_import {
+            for alias in &aliases {
+                if let Some(sig) = stdlib_signature(&imp.target, alias) {
+                    env.variables.insert(alias.to_string(), Type::Function(FunctionType {
+                        params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
+                        returns: Box::new(sig.returns.clone()),
+                        is_variadic: sig.is_variadic,
+                    }));
                 }
-            } else {
-                // Module import: [fmt](fmt) -> inject struct type
-                let methods: HashMap<String, CallableSignature> = operations.iter().map(|op| {
-                    (op.to_string(), CallableSignature {
-                        params: vec![],
-                        returns: Type::Primitive(PrimitiveType { name: "String".into() }),
-                    })
-                }).collect();
-                env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
-                    name: imp.target.clone(),
-                    fields: HashMap::new(),
-                    methods,
-                }));
             }
+        } else {
+            let methods: HashMap<String, CallableSignature> = stdlib_module_signatures(&imp.target)
+                .unwrap()
+                .iter()
+                .map(|(name, sig)| (name.to_string(), sig.clone()))
+                .collect();
+            env.structs.insert(imp.alias.clone(), Type::Struct(StructType {
+                name: imp.target.clone(),
+                fields: HashMap::new(),
+                methods,
+            }));
         }
     }
 }
@@ -132,11 +114,11 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
                 let fields: std::collections::HashMap<String, Type> = parent_heading.params.iter()
                     .map(|p| {
                         let ty = p.type_name.as_ref()
-                            .and_then(|tn| match tn.as_str() {
-                                "String" => Some(Type::Primitive(PrimitiveType { name: "String".into() })),
-                                "Int" => Some(Type::Primitive(PrimitiveType { name: "Int".into() })),
-                                "Bool" => Some(Type::Primitive(PrimitiveType { name: "Bool".into() })),
-                                _ => Some(Type::Primitive(PrimitiveType { name: tn.clone() })),
+                            .map(|tn| match tn.as_str() {
+                                "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
+                                "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
+                                "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
+                                _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
                             })
                             .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
                         (p.name.clone(), ty)
@@ -146,6 +128,23 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
 
         let mut block_env = type_env.clone();
         block_env.receiver = receiver;
+
+        // Inject current heading's params into local scope so method bodies
+        // can reference their declared parameters.
+        // Find the heading that owns this code block by heading_id.
+        if let Some(owner) = find_heading_by_id(&block.heading_id, &module.headings) {
+            for p in &owner.params {
+                let ty = p.type_name.as_ref()
+                    .map(|tn| match tn.as_str() {
+                        "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
+                        "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
+                        "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
+                        _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
+                    })
+                    .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
+                block_env.variables.insert(p.name.clone(), ty);
+            }
+        }
 
         for stmt in &block.body.statements {
             match stmt {
@@ -183,4 +182,17 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         parsed_blocks,
         type_env,
     }
+}
+
+/// Find a heading by id, recursively searching the heading tree.
+fn find_heading_by_id<'a>(target_id: &str, headings: &'a [crate::model::TangleHeading]) -> Option<&'a crate::model::TangleHeading> {
+    for h in headings {
+        if h.id == target_id {
+            return Some(h);
+        }
+        if let Some(found) = find_heading_by_id(target_id, &h.children) {
+            return Some(found);
+        }
+    }
+    None
 }

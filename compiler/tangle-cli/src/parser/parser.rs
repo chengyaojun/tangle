@@ -101,6 +101,8 @@ impl<'a> ParserState<'a> {
                     | TokenKind::Comma
                     | TokenKind::Else
                     | TokenKind::Return
+                    | TokenKind::Let
+                    | TokenKind::Const
             ) {
                 break;
             }

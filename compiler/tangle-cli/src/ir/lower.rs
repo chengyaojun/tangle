@@ -19,12 +19,13 @@ pub(crate) fn stmt_source(stmt: &Stmt, source: &str) -> String {
 }
 
 pub fn lower_statements(stmts: &[Stmt], source: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
     graph.nodes.push(IRNode {
         id: entry_id.clone(), kind: IRNodeKind::Compute,
         label: "entry".into(), source_span: None, source_text: None,
+        group: None, style: None,
     });
 
     let mut prev_id = entry_id;
@@ -38,29 +39,33 @@ pub fn lower_statements(stmts: &[Stmt], source: &str, _file: &str, id_gen: &mut 
         };
         let src = stmt_source(stmt, source);
 
-        let node_id = id_gen.next();
+        let node_id = id_gen.fresh();
         graph.nodes.push(IRNode {
             id: node_id.clone(), kind: node_kind, label,
             source_span: None, source_text: Some(src),
+            group: None, style: None,
         });
 
         graph.edges.push(IREdge {
             from: prev_id, to: node_id.clone(), kind: IREdgeKind::Control,
             guard: None, source_span: None,
+            priority: None, style: None,
         });
 
         prev_id = node_id;
     }
 
     // Terminal node
-    let terminal_id = id_gen.next();
+    let terminal_id = id_gen.fresh();
     graph.nodes.push(IRNode {
         id: terminal_id.clone(), kind: IRNodeKind::Terminal,
         label: "exit".into(), source_span: None, source_text: None,
+        group: None, style: None,
     });
     graph.edges.push(IREdge {
         from: prev_id, to: terminal_id, kind: IREdgeKind::Control,
         guard: None, source_span: None,
+        priority: None, style: None,
     });
 
     graph

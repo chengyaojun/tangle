@@ -1,4 +1,4 @@
-# Order Service
+# OrderService
 
 ### Order
 * `id`: order ID (String)

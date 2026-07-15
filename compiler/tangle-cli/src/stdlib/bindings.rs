@@ -1,6 +1,5 @@
 /// Host-specific standard library bindings.
 /// Maps each stdlib module to host-native implementations for JS, Python, and Go.
-
 pub enum TargetHost { JavaScript, Python, Go }
 
 pub fn stdlib_prelude(host: TargetHost) -> &'static str {

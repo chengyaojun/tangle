@@ -1,0 +1,64 @@
+---
+source: compiler/tangle-cli/tests/v03_phase2/snapshots.rs
+expression: graph_to_json(&graph)
+---
+{
+  "edges": [
+    {
+      "from": "n0",
+      "guard": null,
+      "kind": "dashed",
+      "sourceSpan": null,
+      "to": "n1"
+    },
+    {
+      "from": "n0",
+      "guard": null,
+      "kind": "thick",
+      "sourceSpan": null,
+      "to": "n2"
+    },
+    {
+      "from": "n0",
+      "guard": null,
+      "kind": "crossed",
+      "sourceSpan": null,
+      "to": "n3"
+    }
+  ],
+  "entryNodeId": "n0",
+  "errorEdges": [],
+  "functions": [],
+  "importedStdlib": [],
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "action",
+      "label": "Start",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n1",
+      "kind": "action",
+      "label": "Async",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n2",
+      "kind": "action",
+      "label": "Critical",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n3",
+      "kind": "action",
+      "label": "Failed",
+      "sourceSpan": null,
+      "sourceText": null
+    }
+  ],
+  "stdlibImports": []
+}

@@ -121,7 +121,7 @@ fn translate_struct_literals(src: &str) -> String {
                 j += 1;
             }
             if j < chars.len() && chars[j] == '{' && !is_block_keyword(&ident) {
-                if ident == "this" || ident.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if ident == "this" || ident.chars().next().is_some_and(|c| c.is_uppercase()) {
                     out.push('{');
                     i = j + 1;
                     continue;
@@ -211,12 +211,183 @@ pub fn emit_js(graph: &RuleGraph, module_name: &str) -> String {
     out
 }
 
+/// Emit metadata comments (group, style) for a node. Returns comment lines with given indent.
+fn emit_node_comments(node: &IRNode, indent: &str) -> String {
+    let mut out = String::new();
+    if let Some(ref group) = node.group {
+        out.push_str(&format!("{}// group: {}\n", indent, group));
+    }
+    if let Some(ref style) = node.style {
+        out.push_str(&format!("{}// style: {}\n", indent, style));
+    }
+    out
+}
+
+/// Emit metadata comments for an edge kind and style.
+fn emit_edge_comments(edge: &IREdge, indent: &str) -> String {
+    let mut out = String::new();
+    match edge.kind {
+        IREdgeKind::Dashed => out.push_str(&format!("{}// edge: dashed\n", indent)),
+        IREdgeKind::Thick => out.push_str(&format!("{}// edge: thick\n", indent)),
+        IREdgeKind::Crossed => out.push_str(&format!("{}// edge: crossed\n", indent)),
+        IREdgeKind::Control | IREdgeKind::Condition | IREdgeKind::Error => {}
+    }
+    if let Some(ref style) = edge.style {
+        out.push_str(&format!("{}// edge-style: {}\n", indent, style));
+    }
+    out
+}
+
+/// Sort edges by priority (lower = higher precedence). Edges without priority sort last.
+fn sort_edges_by_priority<'a>(edges: &[&'a IREdge]) -> Vec<&'a IREdge> {
+    let mut sorted = edges.to_vec();
+    sorted.sort_by(|a, b| {
+        match (a.priority, b.priority) {
+            (Some(pa), Some(pb)) => pa.cmp(&pb),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
+    sorted
+}
+
+/// Recursively emit the body of a branch target inside an if/else block.
+fn emit_branch_body<'a>(
+    target_id: &'a str,
+    nodes: &'a [IRNode],
+    edges: &'a [IREdge],
+    visited: &mut HashSet<&'a str>,
+    indent: &str,
+) -> String {
+    let mut out = String::new();
+    if visited.contains(target_id) {
+        return out;
+    }
+    visited.insert(target_id);
+
+    let node = match nodes.iter().find(|n| n.id == target_id) {
+        Some(n) => n,
+        None => return out,
+    };
+
+    out.push_str(&emit_node_comments(node, indent));
+
+    match node.kind {
+        IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
+            if let Some(ref src) = node.source_text {
+                out.push_str(&format!("{}{};\n", indent, translate_stmt_to_js(src)));
+            } else {
+                out.push_str(&format!("{}// {}: {}\n", indent,
+                    match node.kind {
+                        IRNodeKind::Action => "action",
+                        IRNodeKind::Compute => "compute",
+                        IRNodeKind::Decision => "decision",
+                        _ => "unknown",
+                    },
+                    node.label
+                ));
+            }
+        }
+        IRNodeKind::Terminal => {
+            out.push_str(&format!("{}return Ok(undefined);\n", indent));
+        }
+        IRNodeKind::ErrorTerminal => {
+            let label = node.label.replace('\'', "\\'");
+            out.push_str(&format!("{}return Err('{}');\n", indent, label));
+        }
+    }
+
+    // Recurse into non-Crossed successors
+    for edge in edges {
+        if edge.from == node.id && edge.kind != IREdgeKind::Crossed {
+            out.push_str(&emit_branch_body(&edge.to, nodes, edges, visited, indent));
+        }
+    }
+    out
+}
+
+/// Emit if/else-if chain for a Decision node with guarded outgoing edges.
+fn emit_decision_branch<'a>(
+    node: &IRNode,
+    nodes: &'a [IRNode],
+    edges: &'a [IREdge],
+    visited: &mut HashSet<&'a str>,
+    indent: &str,
+) -> String {
+    let mut out = String::new();
+    let out_edges: Vec<&IREdge> = edges.iter().filter(|e| e.from == node.id).collect();
+
+    let mut guarded: Vec<&IREdge> = out_edges.iter()
+        .filter(|e| e.guard.is_some() && e.kind != IREdgeKind::Crossed)
+        .copied()
+        .collect();
+    let unguarded: Vec<&IREdge> = out_edges.iter()
+        .filter(|e| e.guard.is_none() && e.kind != IREdgeKind::Crossed)
+        .copied()
+        .collect();
+    let crossed: Vec<&IREdge> = out_edges.iter()
+        .filter(|e| e.kind == IREdgeKind::Crossed)
+        .copied()
+        .collect();
+
+    guarded = sort_edges_by_priority(&guarded);
+
+    if guarded.is_empty() && unguarded.is_empty() {
+        // No emitable edges; fall back to comment
+        out.push_str(&format!("{}// decision: {} (no guarded branches)\n", indent, node.label));
+        for e in &crossed {
+            out.push_str(&format!("{}// skipped: crossed edge to {}\n", indent, e.to));
+        }
+        return out;
+    }
+
+    let inner_indent = format!("{}  ", indent);
+
+    // 收集所有分支访问的节点，最后一次性合并，避免污染后续分支的克隆
+    let mut all_branch_visited: HashSet<&str> = HashSet::new();
+
+    for (i, edge) in guarded.iter().enumerate() {
+        out.push_str(&emit_edge_comments(edge, indent));
+        let guard = edge.guard.as_ref().unwrap();
+        if i == 0 {
+            out.push_str(&format!("{}if ({}) {{\n", indent, guard));
+        } else {
+            out.push_str(&format!("{}else if ({}) {{\n", indent, guard));
+        }
+        let mut branch_visited = visited.clone();
+        out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+        all_branch_visited.extend(branch_visited.iter().copied());
+        out.push_str(&format!("{}}}\n", indent));
+    }
+
+    if !unguarded.is_empty() {
+        out.push_str(&format!("{}else {{\n", indent));
+        for edge in &unguarded {
+            out.push_str(&emit_edge_comments(edge, &inner_indent));
+            let mut branch_visited = visited.clone();
+            out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+            all_branch_visited.extend(branch_visited.iter().copied());
+        }
+        out.push_str(&format!("{}}}\n", indent));
+    }
+
+    // 所有分支完成后，一次性合并回 visited
+    visited.extend(all_branch_visited.iter().copied());
+
+    for edge in &crossed {
+        out.push_str(&format!("{}// skipped: crossed edge to {}\n", indent, edge.to));
+    }
+
+    out
+}
+
 /// Emit the body of one function (BFS traversal + Result protocol), wrapped in
 /// try/catch when any statement uses the `?` propagation operator. Returns the
 /// indented body lines WITHOUT the surrounding `function ... { }`.
 fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str) -> String {
     let uses_propagation = nodes.iter().any(|n| {
-        n.source_text.as_ref().map_or(false, |s| statement_uses_propagation(s))
+        n.source_text.as_ref().is_some_and(|s| statement_uses_propagation(s))
     });
     let mut out = String::new();
     if uses_propagation {
@@ -235,8 +406,10 @@ fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str
         }
         visited.insert(&node.id);
 
+        out.push_str(&emit_node_comments(node, "  "));
+
         match node.kind {
-            IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
+            IRNodeKind::Action | IRNodeKind::Compute => {
                 if let Some(ref src) = node.source_text {
                     out.push_str(&format!("  {};\n", translate_stmt_to_js(src)));
                 } else {
@@ -244,11 +417,26 @@ fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str
                         match node.kind {
                             IRNodeKind::Action => "action",
                             IRNodeKind::Compute => "compute",
-                            IRNodeKind::Decision => "decision",
                             _ => "unknown",
                         },
                         node.label
                     ));
+                }
+            }
+            IRNodeKind::Decision => {
+                // Check if this Decision has guarded outgoing edges
+                let has_guarded = edges.iter().any(|e| {
+                    e.from == node.id && e.guard.is_some() && e.kind != IREdgeKind::Crossed
+                });
+                if has_guarded {
+                    out.push_str(&emit_decision_branch(node, nodes, edges, &mut visited, "  "));
+                } else {
+                    // Fall back to existing linear behavior
+                    if let Some(ref src) = node.source_text {
+                        out.push_str(&format!("  {};\n", translate_stmt_to_js(src)));
+                    } else {
+                        out.push_str(&format!("  // decision: {}\n", node.label));
+                    }
                 }
             }
             IRNodeKind::Terminal => {
@@ -261,7 +449,11 @@ fn emit_js_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str
         }
 
         for edge in edges {
-            if edge.from == node.id {
+            if edge.from == node.id && edge.kind != IREdgeKind::Crossed {
+                // Decision 节点的 guarded 边已在 if/else 中处理，跳过入队
+                if node.kind == IRNodeKind::Decision && edge.guard.is_some() {
+                    continue;
+                }
                 if let Some(target) = nodes.iter().find(|n| n.id == edge.to) {
                     queue.push_back(target);
                 }
@@ -347,6 +539,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: "entry".to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -356,6 +549,7 @@ mod tests {
             kind: IRNodeKind::Terminal,
             label: "done".to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -365,6 +559,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: label.to_string(),
             source_span: None, source_text: None,
+            group: None, style: None,
         }
     }
 
@@ -375,6 +570,7 @@ mod tests {
             kind: IREdgeKind::Control,
             guard: None,
             source_span: None,
+            priority: None, style: None,
         }
     }
 
@@ -553,6 +749,7 @@ mod tests {
             kind: IRNodeKind::Action,
             label: "return".to_string(),
             source_span: None, source_text: Some(src.to_string()),
+            group: None, style: None,
         }
     }
 
@@ -583,11 +780,13 @@ mod tests {
                     id: "n0".to_string(), kind: IRNodeKind::Compute,
                     label: "toggle.entry".to_string(),
                     source_span: None, source_text: None,
+                    group: None, style: None,
                 },
                 IRNode {
                     id: "n1".to_string(), kind: IRNodeKind::Compute,
                     label: "flag = true".to_string(),
                     source_span: None, source_text: None,
+                    group: None, style: None,
                 },
             ],
             edges: vec![make_edge("n0", "n1")],

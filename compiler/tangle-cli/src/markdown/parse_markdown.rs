@@ -163,7 +163,7 @@ pub fn parse_markdown(source: &str, _file: &str) -> Vec<MarkdownNode> {
     root_children
 }
 
-fn flush_text(text: &mut String, position: &mut Option<MarkdownPosition>, stack: &mut Vec<MarkdownNode>) {
+fn flush_text(text: &mut String, position: &mut Option<MarkdownPosition>, stack: &mut [MarkdownNode]) {
     if text.trim().is_empty() { text.clear(); *position = None; return; }
     let text_node = MarkdownNode {
         node_type: "text".into(), children: vec![],

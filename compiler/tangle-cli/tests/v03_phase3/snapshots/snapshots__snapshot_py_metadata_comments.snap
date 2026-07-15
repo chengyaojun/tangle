@@ -1,0 +1,43 @@
+---
+source: compiler/tangle-cli/tests/v03_phase3/snapshots.rs
+expression: py
+---
+# Tangle-generated Python
+from dataclasses import dataclass
+from typing import Any, Optional
+
+# Runtime helpers
+class Result:
+    def __init__(self, ok: bool, value: Any = None, error: str = ''):
+        self.ok = ok
+        self.value = value
+        self.error = error
+
+def Ok(value: Any = None) -> Result:
+    return Result(True, value)
+
+def Err(variant: str, value: Any = None) -> Result:
+    return Result(False, value, variant)
+
+
+def ApprovalFlow() -> Result:
+    # group: Approval
+    # decision: check
+    # edge-style: stroke:#f00
+    # edge: crossed
+    # group: Approval
+    # style: highlight
+    # action: auto_approve
+    # edge: dashed
+    # action: manual_review
+    # edge: thick
+    # action: reject
+    return Ok(None)
+
+# Entry point
+if __name__ == '__main__':
+    result = ApprovalFlow()
+    if not result.ok:
+        print(f'Error: {result.error}', file=__import__('sys').stderr)
+        exit(1)
+    print(result.value)

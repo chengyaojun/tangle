@@ -1,0 +1,49 @@
+---
+source: compiler/tangle-cli/tests/v03_phase3/snapshots.rs
+expression: go
+---
+// Tangle-generated Go
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+type Result struct {
+    Ok    bool
+    Value interface{}
+    Error string
+}
+
+func Ok(value interface{}) Result {
+    return Result{Ok: true, Value: value}
+}
+
+func Err(variant string) Result {
+    return Result{Ok: false, Error: variant}
+}
+
+func ApprovalFlow() Result {
+    // group: Approval
+    // decision: check
+    // edge-style: stroke:#f00
+    // edge: crossed
+    // group: Approval
+    // style: highlight
+    // action: auto_approve
+    // edge: dashed
+    // action: manual_review
+    // edge: thick
+    // action: reject
+    return Ok(nil)
+}
+
+func main() {
+    result := ApprovalFlow()
+    if !result.Ok {
+        fmt.Fprintf(os.Stderr, "Error: %s\n", result.Error)
+        os.Exit(1)
+    }
+    fmt.Println(result.Value)
+}

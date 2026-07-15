@@ -19,6 +19,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                     ty.clone()
                 } else if let Some(ty) = env.structs.get(&e.name) {
                     ty.clone()
+                } else if let Some(ft) = env.functions.get(&e.name) {
+                    Type::Function(ft.clone())
                 } else {
                     diags.push(TangleDiagnostic {
                         code: "TANGLE_SYMBOL_NOT_FOUND".into(),
@@ -29,6 +31,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                 }
             } else if let Some(ty) = env.structs.get(&e.name) {
                 ty.clone()
+            } else if let Some(ft) = env.functions.get(&e.name) {
+                Type::Function(ft.clone())
             } else {
                 diags.push(TangleDiagnostic {
                     code: "TANGLE_SYMBOL_NOT_FOUND".into(),
@@ -45,8 +49,12 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                 Type::Struct(s) => {
                     if let Some(field_ty) = s.fields.get(&e.member) {
                         field_ty.clone()
-                    } else if let Some(_method) = s.methods.get(&e.member) {
-                        Type::Primitive(PrimitiveType { name: "Bool".into() })
+                    } else if let Some(sig) = s.methods.get(&e.member) {
+                        Type::Function(FunctionType {
+                            params: sig.params.iter().map(|(_, t)| t.clone()).collect(),
+                            returns: Box::new(sig.returns.clone()),
+                            is_variadic: sig.is_variadic,
+                        })
                     } else {
                         diags.push(TangleDiagnostic {
                             code: "TANGLE_SYMBOL_NOT_FOUND".into(),
@@ -67,13 +75,52 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             }
         }
         Expr::Call(e) => {
-            let (_callee_ty, mut callee_diags) = check_expression(&e.callee, env);
+            let (callee_ty, mut callee_diags) = check_expression(&e.callee, env);
             diags.append(&mut callee_diags);
-            for arg in &e.args {
-                let (_, mut arg_diags) = check_expression(arg, env);
-                diags.append(&mut arg_diags);
+            let arg_types: Vec<Type> = e.args.iter().map(|arg| {
+                let (ty, mut d) = check_expression(arg, env);
+                diags.append(&mut d);
+                ty
+            }).collect();
+
+            match &callee_ty {
+                Type::Function(sig) => {
+                    let expected = sig.params.len();
+                    let actual = arg_types.len();
+                    if sig.is_variadic {
+                        if actual < expected.saturating_sub(1) {
+                            diags.push(TangleDiagnostic {
+                                code: "TANGLE_ARITY_MISMATCH".into(),
+                                message: format!(
+                                    "Expected at least {} args, got {}",
+                                    expected.saturating_sub(1),
+                                    actual
+                                ),
+                                span: e.span.clone(),
+                            });
+                        }
+                    } else if actual != expected {
+                        diags.push(TangleDiagnostic {
+                            code: "TANGLE_ARITY_MISMATCH".into(),
+                            message: format!("Expected {} args, got {}", expected, actual),
+                            span: e.span.clone(),
+                        });
+                    }
+                    for (i, (arg_ty, param_ty)) in arg_types.iter().zip(&sig.params).enumerate() {
+                        if !types_equal(arg_ty, param_ty) {
+                            diags.push(TangleDiagnostic {
+                                code: "TANGLE_TYPE_ERROR".into(),
+                                message: format!("Arg {} type mismatch", i + 1),
+                                span: e.span.clone(),
+                            });
+                        }
+                    }
+                    (*sig.returns).clone()
+                }
+                // Non-function callee (e.g., struct constructor, unknown symbol):
+                // return Any without error to avoid false positives on untyped code.
+                _ => Type::Any,
             }
-            Type::Primitive(PrimitiveType { name: "Bool".into() })
         }
         Expr::Binary(e) => {
             let (left_ty, mut left_diags) = check_expression(&e.left, env);
@@ -160,6 +207,7 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             Type::Function(FunctionType {
                 params: vec![],
                 returns: Box::new(Type::Primitive(PrimitiveType { name: "Bool".into() })),
+                is_variadic: false,
             })
         }
         Expr::Propagation(e) => {

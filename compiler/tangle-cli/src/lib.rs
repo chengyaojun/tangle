@@ -12,3 +12,4 @@ pub mod stdlib;
 pub mod incremental;
 pub mod lsp;
 pub mod docgen;
+pub mod audit_support;

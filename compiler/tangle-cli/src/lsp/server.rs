@@ -161,3 +161,9 @@ impl LspServer {
         Ok(())
     }
 }
+
+impl Default for LspServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}

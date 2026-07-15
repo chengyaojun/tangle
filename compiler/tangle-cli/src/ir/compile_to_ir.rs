@@ -4,7 +4,7 @@ use crate::ir::graph::*;
 use crate::ir::lower::lower_statements;
 use crate::ir::lower::stmt_source;
 use crate::ir::lower_rule_flow::lower_rule_flow;
-use crate::ir::lower_rule_table::lower_rule_table;
+use crate::ir::lower_rule_table::lower_rule_table_with_diagnostics;
 use crate::ir::lower_rule_tree::lower_rule_tree;
 use crate::ir::lower_rule_toggle::lower_rule_toggle;
 use crate::ir::validate::validate_ir;
@@ -30,7 +30,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
 
     // Lower rule blocks from headings
     let mut rule_graphs: Vec<RuleGraph> = vec![];
-    collect_rule_graphs(&checked.headings, &checked.file, &mut id_gen, &mut rule_graphs);
+    collect_rule_graphs(&checked.headings, &checked.file, &mut id_gen, &mut rule_graphs, &mut diagnostics);
     for sub_graph in rule_graphs {
         match &mut merged_graph {
             None => merged_graph = Some(sub_graph),
@@ -43,11 +43,12 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
     }
 
     let mut graph = merged_graph.unwrap_or_else(|| {
-        let entry_id = id_gen.next();
+        let entry_id = id_gen.fresh();
         let mut g = create_graph(entry_id.clone());
         g.nodes.push(IRNode {
             id: entry_id.clone(), kind: IRNodeKind::Terminal,
             label: "empty".into(), source_span: None, source_text: None,
+            group: None, style: None,
         });
         g
     });
@@ -85,18 +86,24 @@ fn collect_rule_graphs(
     file: &str,
     id_gen: &mut FreshNodeId,
     out: &mut Vec<RuleGraph>,
+    diagnostics: &mut Vec<TangleDiagnostic>,
 ) {
     for h in headings {
         if let Some(ref rule) = h.rule {
-            let sub_graph = match rule.kind {
-                RuleKind::Flow => lower_rule_flow(&rule.source, file, id_gen),
-                RuleKind::Table => lower_rule_table(&rule.source, file, id_gen),
+            let (sub_graph, rule_diags) = match rule.kind {
+                RuleKind::Flow => {
+                    (lower_rule_flow(&rule.source, file, id_gen), vec![])
+                }
+                RuleKind::Table => lower_rule_table_with_diagnostics(&rule.source, file, id_gen),
                 RuleKind::Tree => lower_rule_tree(&rule.source, file, id_gen),
-                RuleKind::Toggle => lower_rule_toggle(&rule.source, file, id_gen),
+                RuleKind::Toggle => {
+                    (lower_rule_toggle(&rule.source, file, id_gen), vec![])
+                }
             };
             out.push(sub_graph);
+            diagnostics.extend(rule_diags);
         }
-        collect_rule_graphs(&h.children, file, id_gen, out);
+        collect_rule_graphs(&h.children, file, id_gen, out, diagnostics);
     }
 }
 
@@ -147,10 +154,11 @@ fn lower_function_body(
     blocks: &[&ParsedCodeBlock],
     id_gen: &mut FreshNodeId,
 ) -> (Vec<IRNode>, Vec<IREdge>, String, Vec<IRErrorEdge>) {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut nodes: Vec<IRNode> = vec![IRNode {
         id: entry_id.clone(), kind: IRNodeKind::Compute,
         label: "entry".into(), source_span: None, source_text: None,
+        group: None, style: None,
     }];
     let mut edges: Vec<IREdge> = vec![];
     let mut prev_id = entry_id.clone();
@@ -164,27 +172,31 @@ fn lower_function_body(
                 Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
             };
             let src = stmt_source(stmt, &block.source);
-            let node_id = id_gen.next();
+            let node_id = id_gen.fresh();
             nodes.push(IRNode {
                 id: node_id.clone(), kind: node_kind, label,
                 source_span: None, source_text: Some(src),
+                group: None, style: None,
             });
             edges.push(IREdge {
                 from: prev_id, to: node_id.clone(), kind: IREdgeKind::Control,
                 guard: None, source_span: None,
+                priority: None, style: None,
             });
             prev_id = node_id;
         }
     }
 
-    let terminal_id = id_gen.next();
+    let terminal_id = id_gen.fresh();
     nodes.push(IRNode {
         id: terminal_id.clone(), kind: IRNodeKind::Terminal,
         label: "exit".into(), source_span: None, source_text: None,
+        group: None, style: None,
     });
     edges.push(IREdge {
         from: prev_id, to: terminal_id, kind: IREdgeKind::Control,
         guard: None, source_span: None,
+        priority: None, style: None,
     });
 
     (nodes, edges, entry_id, vec![])

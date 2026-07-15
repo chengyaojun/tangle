@@ -48,3 +48,8 @@ coverage/
 
 # Git worktrees
 .worktrees/
+
+# Audit run artifacts (matrix.csv, per-cell output, summary.md)
+tests/audit/output/
+tests/audit/ir-diff/target/
+tests/audit/lsp-probe/target/

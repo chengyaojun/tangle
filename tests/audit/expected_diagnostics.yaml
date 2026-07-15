@@ -1,0 +1,41 @@
+# Expected diagnostics whitelist.
+# A fixture not listed here is expected to produce zero diagnostics.
+# A fixture listed here declares which TANGLE_* codes it intentionally triggers.
+#
+# Format:
+#   <fixture-filename>:
+#     <surface>/<target>/<mode>:
+#       - TANGLE_CODE_1
+#       - TANGLE_CODE_2
+#
+# NOTE: This file is documentation-only. The audit script (run-audit.ps1)
+# currently reads its allowlist from the hard-coded `$ExpectedDiagCodes` hash
+# table inside the script. Keep both in sync until powershell-yaml is
+# available in CI, at which point the script can read this file directly.
+
+# Phase 2 fixtures that intentionally exercise diagnostic features:
+decision-table-overlap.tangle.md:
+  run/js/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/js/incremental:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/py/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  run/go/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/js/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/py/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/go/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE
+  build/emit-ir/normal:
+    - TANGLE_RULE_OVERLAP
+    - TANGLE_RULE_UNREACHABLE

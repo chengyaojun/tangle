@@ -1,12 +1,80 @@
 [package]
 name = "tangle-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Tangle compiler - Rust authority implementation"
 
 [[bin]]
 name = "tangle"
 path = "src/main.rs"
+
+[[test]]
+name = "G1_struct_symbol_resolution"
+path = "tests/audit_regression/G1_struct_symbol_resolution.rs"
+
+[[test]]
+name = "G2_method_param_scope"
+path = "tests/audit_regression/G2_method_param_scope.rs"
+
+[[test]]
+name = "G3_member_access_cascade"
+path = "tests/audit_regression/G3_member_access_cascade.rs"
+
+[[test]]
+name = "G5_doc_drift"
+path = "tests/audit_regression/G5_doc_drift.rs"
+
+[[test]]
+name = "G6_platform_diff"
+path = "tests/audit_regression/G6_platform_diff.rs"
+
+[[test]]
+name = "G7_heading_prefix"
+path = "tests/audit_regression/G7_heading_prefix.rs"
+
+[[test]]
+name = "toplevel_callable"
+path = "tests/v03_phase1/toplevel_callable.rs"
+
+[[test]]
+name = "stdlib_signatures"
+path = "tests/v03_phase1/stdlib_signatures.rs"
+
+[[test]]
+name = "stdlib_module_call"
+path = "tests/v03_phase1/stdlib_module_call.rs"
+
+[[test]]
+name = "member_access_type"
+path = "tests/v03_phase1/member_access_type.rs"
+
+[[test]]
+name = "call_type_checking"
+path = "tests/v03_phase1/call_type_checking.rs"
+
+[[test]]
+name = "compat_check"
+path = "tests/v03_phase1/compat_check.rs"
+
+[[test]]
+name = "phase2_snapshots"
+path = "tests/v03_phase2/snapshots.rs"
+
+[[test]]
+name = "span_tracking"
+path = "tests/v03_phase3/span_tracking.rs"
+
+[[test]]
+name = "js_codegen"
+path = "tests/v03_phase3/js_codegen.rs"
+
+[[test]]
+name = "py_go_codegen"
+path = "tests/v03_phase3/py_go_codegen.rs"
+
+[[test]]
+name = "snapshots"
+path = "tests/v03_phase3/snapshots.rs"
 
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
@@ -20,3 +88,4 @@ tangle-std = { path = "../../library/std" }
 [dev-dependencies]
 tempfile = "3"
 pretty_assertions = "1"
+insta = { version = "1", features = ["json"] }

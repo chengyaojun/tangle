@@ -1,7 +1,7 @@
 use crate::ir::graph::*;
 
 pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
-    let entry_id = id_gen.next();
+    let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
     graph.nodes.push(IRNode {
@@ -9,6 +9,7 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
         kind: IRNodeKind::Compute,
         label: "toggle.entry".into(),
         source_span: None, source_text: None,
+        group: None, style: None,
     });
 
     for line in checkbox_markdown.lines() {
@@ -39,12 +40,13 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
             "flag".to_string()
         };
 
-        let node_id = id_gen.next();
+        let node_id = id_gen.fresh();
         graph.nodes.push(IRNode {
             id: node_id.clone(),
             kind: IRNodeKind::Compute,
             label: format!("{} = {}", name, checked),
             source_span: None, source_text: None,
+            group: None, style: None,
         });
         graph.edges.push(IREdge {
             from: entry_id.clone(),
@@ -52,6 +54,7 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
             kind: IREdgeKind::Control,
             guard: None,
             source_span: None,
+            priority: None, style: None,
         });
     }
 

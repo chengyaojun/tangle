@@ -1,0 +1,92 @@
+---
+source: compiler/tangle-cli/tests/v03_phase2/snapshots.rs
+expression: graph_to_json(&graph)
+---
+{
+  "edges": [
+    {
+      "from": "n0",
+      "guard": "Income: high",
+      "kind": "condition",
+      "sourceSpan": null,
+      "to": "n1"
+    },
+    {
+      "from": "n1",
+      "guard": "Credit: good",
+      "kind": "condition",
+      "sourceSpan": null,
+      "to": "n2"
+    },
+    {
+      "from": "n2",
+      "guard": null,
+      "kind": "control",
+      "sourceSpan": null,
+      "to": "n3"
+    },
+    {
+      "from": "n0",
+      "guard": "Income: low",
+      "kind": "condition",
+      "sourceSpan": null,
+      "to": "n4"
+    },
+    {
+      "from": "n4",
+      "guard": null,
+      "kind": "control",
+      "sourceSpan": null,
+      "to": "n5"
+    }
+  ],
+  "entryNodeId": "n0",
+  "errorEdges": [],
+  "functions": [],
+  "importedStdlib": [],
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "decision",
+      "label": "tree.entry",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n1",
+      "kind": "decision",
+      "label": "Income: high",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n2",
+      "kind": "decision",
+      "label": "Credit: good",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n3",
+      "kind": "action",
+      "label": "approve",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n4",
+      "kind": "decision",
+      "label": "Income: low",
+      "sourceSpan": null,
+      "sourceText": null
+    },
+    {
+      "id": "n5",
+      "kind": "action",
+      "label": "reject",
+      "sourceSpan": null,
+      "sourceText": null
+    }
+  ],
+  "stdlibImports": []
+}
