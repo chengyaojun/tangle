@@ -117,3 +117,38 @@ fn js_crossed_edge_is_skipped() {
     let js = emit_js(&graph, "CrossedTest");
     assert!(js.contains("// skipped: crossed edge"), "should emit skipped comment, got:\n{}", js);
 }
+
+#[test]
+fn js_decision_shared_error_terminal_emitted_in_all_branches() {
+    let graph = RuleGraph {
+        nodes: vec![
+            IRNode { id: "entry".into(), kind: IRNodeKind::Decision, label: "check".into(),
+                source_span: None, source_text: None, group: None, style: None },
+            IRNode { id: "ok".into(), kind: IRNodeKind::Action, label: "ok".into(),
+                source_span: None, source_text: Some("status = \"ok\"".into()),
+                group: None, style: None },
+            IRNode { id: "bad".into(), kind: IRNodeKind::Action, label: "bad".into(),
+                source_span: None, source_text: Some("status = \"bad\"".into()),
+                group: None, style: None },
+            IRNode { id: "err".into(), kind: IRNodeKind::ErrorTerminal, label: "SharedError".into(),
+                source_span: None, source_text: None, group: None, style: None },
+        ],
+        edges: vec![
+            IREdge { from: "entry".into(), to: "ok".into(), kind: IREdgeKind::Condition,
+                guard: Some("x > 0".into()), source_span: None, priority: Some(0), style: None },
+            IREdge { from: "entry".into(), to: "bad".into(), kind: IREdgeKind::Condition,
+                guard: Some("x <= 0".into()), source_span: None, priority: Some(1), style: None },
+            IREdge { from: "ok".into(), to: "err".into(), kind: IREdgeKind::Control,
+                guard: None, source_span: None, priority: None, style: None },
+            IREdge { from: "bad".into(), to: "err".into(), kind: IREdgeKind::Control,
+                guard: None, source_span: None, priority: None, style: None },
+        ],
+        error_edges: vec![], entry_node_id: "entry".into(),
+        imported_stdlib: vec![], stdlib_imports: vec![], functions: vec![],
+    };
+
+    let js = emit_js(&graph, "SharedErrTest");
+    // ErrorTerminal "SharedError" should appear in BOTH branches
+    let count = js.matches("return Err('SharedError')").count();
+    assert_eq!(count, 2, "SharedError ErrorTerminal should be emitted in both branches, got {} occurrences:\n{}", count, js);
+}

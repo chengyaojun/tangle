@@ -344,6 +344,9 @@ fn emit_decision_branch<'a>(
 
     let inner_indent = format!("{}  ", indent);
 
+    // 收集所有分支访问的节点，最后一次性合并，避免污染后续分支的克隆
+    let mut all_branch_visited: HashSet<&str> = HashSet::new();
+
     for (i, edge) in guarded.iter().enumerate() {
         out.push_str(&emit_edge_comments(edge, indent));
         let guard = edge.guard.as_ref().unwrap();
@@ -354,10 +357,7 @@ fn emit_decision_branch<'a>(
         }
         let mut branch_visited = visited.clone();
         out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
-        // 合并分支 visited 回主集合，防止 BFS 重复发射
-        for id in &branch_visited {
-            visited.insert(id);
-        }
+        all_branch_visited.extend(branch_visited.iter().copied());
         out.push_str(&format!("{}}}\n", indent));
     }
 
@@ -367,12 +367,13 @@ fn emit_decision_branch<'a>(
             out.push_str(&emit_edge_comments(edge, &inner_indent));
             let mut branch_visited = visited.clone();
             out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
-            for id in &branch_visited {
-                visited.insert(id);
-            }
+            all_branch_visited.extend(branch_visited.iter().copied());
         }
         out.push_str(&format!("{}}}\n", indent));
     }
+
+    // 所有分支完成后，一次性合并回 visited
+    visited.extend(all_branch_visited.iter().copied());
 
     for edge in &crossed {
         out.push_str(&format!("{}// skipped: crossed edge to {}\n", indent, edge.to));
