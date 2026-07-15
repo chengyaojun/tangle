@@ -55,6 +55,13 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
         }
         visited.insert(&node.id);
 
+        if let Some(ref group) = node.group {
+            out.push_str(&format!("    # group: {}\n", group));
+        }
+        if let Some(ref style) = node.style {
+            out.push_str(&format!("    # style: {}\n", style));
+        }
+
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute | IRNodeKind::Decision => {
                 let label = node.label.replace('\'', "\\'");
@@ -80,6 +87,15 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
 
         for edge in &graph.edges {
             if edge.from == node.id {
+                match edge.kind {
+                    IREdgeKind::Dashed => out.push_str("    # edge: dashed\n"),
+                    IREdgeKind::Thick => out.push_str("    # edge: thick\n"),
+                    IREdgeKind::Crossed => out.push_str("    # edge: crossed\n"),
+                    IREdgeKind::Control | IREdgeKind::Condition | IREdgeKind::Error => {}
+                }
+                if let Some(ref style) = edge.style {
+                    out.push_str(&format!("    # edge-style: {}\n", style));
+                }
                 if let Some(target) = graph.nodes.iter().find(|n| n.id == edge.to) {
                     queue.push_back(target);
                 }

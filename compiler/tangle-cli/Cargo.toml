@@ -68,6 +68,10 @@ path = "tests/v03_phase3/span_tracking.rs"
 name = "js_codegen"
 path = "tests/v03_phase3/js_codegen.rs"
 
+[[test]]
+name = "py_go_codegen"
+path = "tests/v03_phase3/py_go_codegen.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
