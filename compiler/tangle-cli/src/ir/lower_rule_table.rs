@@ -26,14 +26,16 @@ pub fn lower_rule_table_with_diagnostics(
         group: None, style: None,
     });
 
-    let lines: Vec<&str> = table_markdown
+    let lines: Vec<(usize, &str)> = table_markdown
         .lines()
-        .filter(|l| l.contains('|'))
-        .filter(|l| {
+        .enumerate()
+        .filter(|(_, l)| l.contains('|'))
+        .filter(|(_, l)| {
             !l.trim()
                 .chars()
                 .all(|c| c == '|' || c == '-' || c == ':' || c == ' ')
         })
+        .map(|(line_no, l)| (line_no + 1, l)) // 1-based line numbers
         .collect();
 
     if lines.len() < 2 {
@@ -41,7 +43,7 @@ pub fn lower_rule_table_with_diagnostics(
     }
 
     // Parse header
-    let headers: Vec<String> = split_table_row(lines[0]);
+    let headers: Vec<String> = split_table_row(lines[0].1);
     if headers.is_empty() {
         return (graph, diagnostics);
     }
@@ -49,9 +51,9 @@ pub fn lower_rule_table_with_diagnostics(
     let condition_count = headers.len().saturating_sub(1);
 
     // 解析所有数据行为条件值数组（用于重叠检测）
-    let mut parsed_rows: Vec<Vec<String>> = vec![];
+    let mut parsed_rows: Vec<(usize, Vec<String>)> = vec![]; // (line_no, conds)
     let mut parsed_actions: Vec<String> = vec![];
-    for line in &lines[1..] {
+    for (line_no, line) in &lines[1..] {
         let cells = split_table_row(line);
         if cells.len() < 2 {
             continue;
@@ -68,33 +70,32 @@ pub fn lower_rule_table_with_diagnostics(
             }
             c
         };
-        parsed_rows.push(conds);
+        parsed_rows.push((*line_no, conds));
         parsed_actions.push(cells.last().unwrap().clone());
     }
 
     // 重叠检测：对每对行 (i, j) 且 i < j
     for i in 0..parsed_rows.len() {
         for j in (i + 1)..parsed_rows.len() {
-            if rows_overlap(&parsed_rows[i], &parsed_rows[j]) {
+            if rows_overlap(&parsed_rows[i].1, &parsed_rows[j].1) {
                 // 检查是否完全相同（duplicate）
-                if parsed_rows[i] == parsed_rows[j] {
+                if parsed_rows[i].1 == parsed_rows[j].1 {
                     diagnostics.push(TangleDiagnostic {
                         code: "TANGLE_RULE_DUPLICATE".into(),
                         message: format!("rows {} and {} are identical", i + 1, j + 1),
-                        // TODO: track line numbers through table parsing to provide accurate spans
                         span: SourceSpan {
                             file: file.into(),
-                            start_line: 0,
+                            start_line: parsed_rows[j].0,
                             start_column: 0,
-                            end_line: 0,
+                            end_line: parsed_rows[j].0,
                             end_column: 0,
                         },
                     });
                 } else {
                     // 检查行 i 是否完全覆盖行 j（j 不可达）
-                    let i_covers_j = parsed_rows[i]
+                    let i_covers_j = parsed_rows[i].1
                         .iter()
-                        .zip(parsed_rows[j].iter())
+                        .zip(parsed_rows[j].1.iter())
                         .all(|(a, b)| a == "-" || a == b);
                     if i_covers_j {
                         diagnostics.push(TangleDiagnostic {
@@ -104,12 +105,11 @@ pub fn lower_rule_table_with_diagnostics(
                                 j + 1,
                                 i + 1
                             ),
-                            // TODO: track line numbers through table parsing to provide accurate spans
                             span: SourceSpan {
                                 file: file.into(),
-                                start_line: 0,
+                                start_line: parsed_rows[j].0,
                                 start_column: 0,
-                                end_line: 0,
+                                end_line: parsed_rows[j].0,
                                 end_column: 0,
                             },
                         });
@@ -122,12 +122,11 @@ pub fn lower_rule_table_with_diagnostics(
                                 j + 1,
                                 i + 1
                             ),
-                            // TODO: track line numbers through table parsing to provide accurate spans
                             span: SourceSpan {
                                 file: file.into(),
-                                start_line: 0,
+                                start_line: parsed_rows[j].0,
                                 start_column: 0,
-                                end_line: 0,
+                                end_line: parsed_rows[j].0,
                                 end_column: 0,
                             },
                         });
@@ -138,7 +137,7 @@ pub fn lower_rule_table_with_diagnostics(
     }
 
     // 生成 IR 节点和边
-    for (row_idx, conds) in parsed_rows.iter().enumerate() {
+    for (row_idx, (_line_no, conds)) in parsed_rows.iter().enumerate() {
         let action = &parsed_actions[row_idx];
         let mut conditions = vec![];
 
