@@ -80,6 +80,7 @@ fn main() {
 /// the production `main` path. Retained for the single-function unit tests
 /// that still exercise this behavior directly.
 #[allow(dead_code)]
+#[allow(clippy::collapsible_match)]
 fn lift_functions(v: Value) -> Value {
     let mut map = match v {
         Value::Object(m) => m,
@@ -201,8 +202,8 @@ fn compare_functions(ts: Value, rs: Value) -> (Value, Value) {
     let rs_arr = extract_functions_array(&rs);
 
     // Sort by name so functions align across the two IRs
-    let mut ts_sorted = ts_arr.clone();
-    let mut rs_sorted = rs_arr.clone();
+    let mut ts_sorted = ts_arr;
+    let mut rs_sorted = rs_arr;
     ts_sorted.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     rs_sorted.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
 
@@ -235,12 +236,12 @@ fn extract_functions_array(ir: &Value) -> Vec<Value> {
 /// Normalize a single function's IR: build a per-function id map and apply
 /// the standard `normalize` transform (strip spans, remap ids, sort keys).
 ///
-/// Function metadata (`name`/`params`/`receiver`) is stripped before
-/// normalization — only structural IR fields (`nodes`/`edges`/`errorEdges`/
-/// `entryNodeId`) participate in comparison. This mirrors the old
-/// `lift_functions` LIFT_FIELDS allowlist and lets an extracted Rust function
-/// (named "main") match a TS-wrapped module (named "module") when their
-/// graph structure is identical.
+/// Strips known function metadata fields (`name`/`params`/`receiver`) before
+/// normalize, ensuring extracted Rust functions and wrapped TS modules compare
+/// equal regardless of function name (e.g. an extracted Rust `main` matches a
+/// TS-wrapped `module` when their graph structure is identical). Only
+/// structural IR fields (`nodes`/`edges`/`errorEdges`/`entryNodeId`)
+/// participate in comparison.
 fn normalize_function(func: &Value) -> Value {
     let id_map = build_id_map(func);
     let mut stripped = func.clone();
