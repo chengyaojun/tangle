@@ -200,14 +200,63 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
         out.push('\n');
     }
 
-    // Module function
-    out.push_str(&format!("func {}() Result {{\n", to_camel(module_name)));
+    if !graph.functions.is_empty() {
+        out.push_str(&emit_multi_function_go(&graph.functions));
+    } else {
+        out.push_str(&emit_single_function_go(
+            &graph.nodes,
+            &graph.edges,
+            &graph.entry_node_id,
+            module_name,
+        ));
+    }
 
-    // BFS traversal
+    out
+}
+
+/// Single-function fallback: one `func {CamelCase(module_name)}()` wrapper + `func main()` entry.
+fn emit_single_function_go(
+    nodes: &[IRNode],
+    edges: &[IREdge],
+    entry_node_id: &str,
+    module_name: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("func {}() Result {{\n", to_camel(module_name)));
+    out.push_str(&emit_go_function_body(nodes, edges, entry_node_id));
+    out.push_str("}\n\n");
+    out.push_str("func main() {\n");
+    out.push_str(&format!("    result := {}()\n", to_camel(module_name)));
+    out.push_str("    if !result.Ok {\n");
+    out.push_str("        fmt.Fprintf(os.Stderr, \"Error: %s\\n\", result.Error)\n");
+    out.push_str("        os.Exit(1)\n");
+    out.push_str("    }\n");
+    out.push_str("    fmt.Println(result.Value)\n");
+    out.push_str("}\n");
+    out
+}
+
+/// Multi-function emission: one Go function per heading-defined callable.
+/// Go's `func main()` is the auto entry point — no separate entry invocation needed.
+fn emit_multi_function_go(functions: &[IRFunction]) -> String {
+    let mut out = String::new();
+    for func in functions {
+        let name = &func.name;
+        // params are currently empty (IRFunction.params will be expanded in a future phase)
+        out.push_str(&format!("func {}() {{\n", name));
+        out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
+        out.push_str("}\n\n");
+    }
+    out
+}
+
+/// Emit the body of one function (BFS traversal + Result protocol), 4-space indented.
+fn emit_go_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str) -> String {
+    let mut out = String::new();
     let mut visited: HashSet<&str> = HashSet::new();
     let mut queue: VecDeque<&IRNode> = VecDeque::new();
 
-    if let Some(entry) = graph.nodes.iter().find(|n| n.id == graph.entry_node_id) {
+    if let Some(entry) = nodes.iter().find(|n| n.id == entry_node_id) {
         queue.push_back(entry);
     }
 
@@ -217,12 +266,7 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
         }
         visited.insert(&node.id);
 
-        if let Some(ref group) = node.group {
-            out.push_str(&format!("    // group: {}\n", group));
-        }
-        if let Some(ref style) = node.style {
-            out.push_str(&format!("    // style: {}\n", style));
-        }
+        out.push_str(&emit_node_comments(node, "    "));
 
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute => {
@@ -237,11 +281,11 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
                 ));
             }
             IRNodeKind::Decision => {
-                let has_guarded = graph.edges.iter().any(|e| {
+                let has_guarded = edges.iter().any(|e| {
                     e.from == node.id && e.guard.is_some() && e.kind != IREdgeKind::Crossed
                 });
                 if has_guarded {
-                    out.push_str(&emit_decision_branch(node, &graph.nodes, &graph.edges, &mut visited, "    "));
+                    out.push_str(&emit_decision_branch(node, nodes, edges, &mut visited, "    "));
                 } else {
                     out.push_str(&format!("    // decision: {}\n", node.label));
                 }
@@ -255,36 +299,18 @@ pub fn emit_go(graph: &RuleGraph, module_name: &str) -> String {
             }
         }
 
-        for edge in &graph.edges {
+        for edge in edges {
             if edge.from == node.id && edge.kind != IREdgeKind::Crossed {
                 if node.kind == IRNodeKind::Decision && edge.guard.is_some() {
                     continue;
                 }
-                match edge.kind {
-                    IREdgeKind::Dashed => out.push_str("    // edge: dashed\n"),
-                    IREdgeKind::Thick => out.push_str("    // edge: thick\n"),
-                    IREdgeKind::Crossed => out.push_str("    // edge: crossed\n"),
-                    IREdgeKind::Control | IREdgeKind::Condition | IREdgeKind::Error => {}
-                }
-                if let Some(ref style) = edge.style {
-                    out.push_str(&format!("    // edge-style: {}\n", style));
-                }
-                if let Some(target) = graph.nodes.iter().find(|n| n.id == edge.to) {
+                out.push_str(&emit_edge_comments(edge, "    "));
+                if let Some(target) = nodes.iter().find(|n| n.id == edge.to) {
                     queue.push_back(target);
                 }
             }
         }
     }
-
-    out.push_str("}\n\n");
-    out.push_str("func main() {\n");
-    out.push_str(&format!("    result := {}()\n", to_camel(module_name)));
-    out.push_str("    if !result.Ok {\n");
-    out.push_str("        fmt.Fprintf(os.Stderr, \"Error: %s\\n\", result.Error)\n");
-    out.push_str("        os.Exit(1)\n");
-    out.push_str("    }\n");
-    out.push_str("    fmt.Println(result.Value)\n");
-    out.push_str("}\n");
 
     out
 }

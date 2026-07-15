@@ -216,14 +216,69 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
         out.push('\n');
     }
 
-    // Module function
-    out.push_str(&format!("def {}() -> Result:\n", module_name));
+    if !graph.functions.is_empty() {
+        out.push_str(&emit_multi_function_py(&graph.functions));
+    } else {
+        out.push_str(&emit_single_function_py(
+            &graph.nodes,
+            &graph.edges,
+            &graph.entry_node_id,
+            &module_name,
+        ));
+    }
 
-    // BFS traversal
+    out
+}
+
+/// Single-function fallback: one `def {module_name}()` wrapper + entry invocation.
+fn emit_single_function_py(
+    nodes: &[IRNode],
+    edges: &[IREdge],
+    entry_node_id: &str,
+    module_name: &str,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("def {}() -> Result:\n", module_name));
+    out.push_str(&emit_python_function_body(nodes, edges, entry_node_id));
+    out.push('\n');
+    out.push_str("# Entry point\n");
+    out.push_str("if __name__ == '__main__':\n");
+    out.push_str(&format!("    result = {}()\n", module_name));
+    out.push_str("    if not result.ok:\n");
+    out.push_str("        print(f'Error: {result.error}', file=__import__('sys').stderr)\n");
+    out.push_str("        exit(1)\n");
+    out.push_str("    print(result.value)\n");
+    out
+}
+
+/// Multi-function emission: one Python function per heading-defined callable.
+/// The entry point calls `main()` only when a function named "main" exists.
+fn emit_multi_function_py(functions: &[IRFunction]) -> String {
+    let mut out = String::new();
+    for func in functions {
+        let name = &func.name;
+        // params are currently empty (IRFunction.params will be expanded in a future phase)
+        out.push_str(&format!("def {}() -> Result:\n", name));
+        out.push_str(&emit_python_function_body(&func.nodes, &func.edges, &func.entry_node_id));
+        out.push('\n');
+    }
+    // Entry: only when main is present
+    let has_main = functions.iter().any(|f| f.name == "main");
+    if has_main {
+        out.push_str("# Entry point\n");
+        out.push_str("if __name__ == '__main__':\n");
+        out.push_str("    main()\n");
+    }
+    out
+}
+
+/// Emit the body of one function (BFS traversal + Result protocol), 4-space indented.
+fn emit_python_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str) -> String {
+    let mut out = String::new();
     let mut visited: HashSet<&str> = HashSet::new();
     let mut queue: VecDeque<&IRNode> = VecDeque::new();
 
-    if let Some(entry) = graph.nodes.iter().find(|n| n.id == graph.entry_node_id) {
+    if let Some(entry) = nodes.iter().find(|n| n.id == entry_node_id) {
         queue.push_back(entry);
     }
 
@@ -233,12 +288,7 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
         }
         visited.insert(&node.id);
 
-        if let Some(ref group) = node.group {
-            out.push_str(&format!("    # group: {}\n", group));
-        }
-        if let Some(ref style) = node.style {
-            out.push_str(&format!("    # style: {}\n", style));
-        }
+        out.push_str(&emit_node_comments(node, "    "));
 
         match node.kind {
             IRNodeKind::Action | IRNodeKind::Compute => {
@@ -254,11 +304,11 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
                 ));
             }
             IRNodeKind::Decision => {
-                let has_guarded = graph.edges.iter().any(|e| {
+                let has_guarded = edges.iter().any(|e| {
                     e.from == node.id && e.guard.is_some() && e.kind != IREdgeKind::Crossed
                 });
                 if has_guarded {
-                    out.push_str(&emit_decision_branch(node, &graph.nodes, &graph.edges, &mut visited, "    "));
+                    out.push_str(&emit_decision_branch(node, nodes, edges, &mut visited, "    "));
                 } else {
                     let label = node.label.replace('\'', "\\'");
                     out.push_str(&format!("    # decision: {}\n", label));
@@ -273,35 +323,18 @@ pub fn emit_python(graph: &RuleGraph, module_name: &str) -> String {
             }
         }
 
-        for edge in &graph.edges {
+        for edge in edges {
             if edge.from == node.id && edge.kind != IREdgeKind::Crossed {
                 if node.kind == IRNodeKind::Decision && edge.guard.is_some() {
                     continue;
                 }
-                match edge.kind {
-                    IREdgeKind::Dashed => out.push_str("    # edge: dashed\n"),
-                    IREdgeKind::Thick => out.push_str("    # edge: thick\n"),
-                    IREdgeKind::Crossed => out.push_str("    # edge: crossed\n"),
-                    IREdgeKind::Control | IREdgeKind::Condition | IREdgeKind::Error => {}
-                }
-                if let Some(ref style) = edge.style {
-                    out.push_str(&format!("    # edge-style: {}\n", style));
-                }
-                if let Some(target) = graph.nodes.iter().find(|n| n.id == edge.to) {
+                out.push_str(&emit_edge_comments(edge, "    "));
+                if let Some(target) = nodes.iter().find(|n| n.id == edge.to) {
                     queue.push_back(target);
                 }
             }
         }
     }
-
-    out.push('\n');
-    out.push_str("# Entry point\n");
-    out.push_str("if __name__ == '__main__':\n");
-    out.push_str(&format!("    result = {}()\n", module_name));
-    out.push_str("    if not result.ok:\n");
-    out.push_str("        print(f'Error: {result.error}', file=__import__('sys').stderr)\n");
-    out.push_str("        exit(1)\n");
-    out.push_str("    print(result.value)\n");
 
     out
 }

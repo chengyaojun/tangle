@@ -12,6 +12,7 @@
 use std::path::PathBuf;
 
 use tangle_cli::audit_support::run_collecting_ir;
+use tangle_cli::codegen::{emit_python, emit_go};
 
 fn fixture_path(group: &str, name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,4 +58,54 @@ fn fallback_top_level_populated_when_no_main() {
 
     assert!(graph.functions.is_empty(), "user should have no functions[] (no main)");
     assert!(!graph.nodes.is_empty(), "user top-level nodes[] should be populated (fallback mode)");
+}
+
+// --- A1-3/4: Py/Go multi-function emission ---
+
+#[test]
+fn py_multi_function_emits_main_and_process() {
+    // payment has `#### main` + `#### process` → multi-function mode.
+    let path = fixture_path("errors", "payment.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let output = emit_python(&graph, "payment");
+
+    assert!(output.contains("def main("), "Py output should contain def main, got: {}", output);
+    assert!(output.contains("def process("), "Py output should contain def process, got: {}", output);
+    assert!(
+        output.contains("if __name__ == '__main__'"),
+        "Py output should contain if __name__ == __main__ entry, got: {}", output
+    );
+}
+
+#[test]
+fn py_single_function_fallback_when_no_main() {
+    // user has `#### activate` (no main) → fallback single-function mode.
+    // Fallback emits `def user()` (not `def main()`/`def process()`).
+    let path = fixture_path("structs", "user.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let output = emit_python(&graph, "user");
+
+    assert!(!output.contains("def main("), "user should not emit def main, got: {}", output);
+    assert!(!output.contains("def process("), "user should not emit def process, got: {}", output);
+}
+
+#[test]
+fn go_multi_function_emits_main_and_process() {
+    let path = fixture_path("errors", "payment.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let output = emit_go(&graph, "payment");
+
+    assert!(output.contains("func main("), "Go output should contain func main, got: {}", output);
+    assert!(output.contains("func process("), "Go output should contain func process, got: {}", output);
+}
+
+#[test]
+fn go_single_function_fallback_when_no_main() {
+    // user has no main → fallback single-function mode emits `func User()` + `func main()` entry.
+    // The distinguishing factor: no `func process()` (only multi-function mode emits process).
+    let path = fixture_path("structs", "user.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let output = emit_go(&graph, "user");
+
+    assert!(!output.contains("func process("), "user should not emit func process, got: {}", output);
 }
