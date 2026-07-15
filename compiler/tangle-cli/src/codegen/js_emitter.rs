@@ -352,7 +352,12 @@ fn emit_decision_branch<'a>(
         } else {
             out.push_str(&format!("{}else if ({}) {{\n", indent, guard));
         }
-        out.push_str(&emit_branch_body(&edge.to, nodes, edges, visited, &inner_indent));
+        let mut branch_visited = visited.clone();
+        out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+        // 合并分支 visited 回主集合，防止 BFS 重复发射
+        for id in &branch_visited {
+            visited.insert(id);
+        }
         out.push_str(&format!("{}}}\n", indent));
     }
 
@@ -360,7 +365,11 @@ fn emit_decision_branch<'a>(
         out.push_str(&format!("{}else {{\n", indent));
         for edge in &unguarded {
             out.push_str(&emit_edge_comments(edge, &inner_indent));
-            out.push_str(&emit_branch_body(&edge.to, nodes, edges, visited, &inner_indent));
+            let mut branch_visited = visited.clone();
+            out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+            for id in &branch_visited {
+                visited.insert(id);
+            }
         }
         out.push_str(&format!("{}}}\n", indent));
     }
