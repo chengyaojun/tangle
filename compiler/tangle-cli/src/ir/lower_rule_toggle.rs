@@ -1,6 +1,11 @@
 use crate::ir::graph::*;
+#[allow(unused_imports)]
+use crate::model::{SourceSpan, TangleDiagnostic};
 
-pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut FreshNodeId) -> RuleGraph {
+pub fn lower_rule_toggle(checkbox_markdown: &str, file: &str, id_gen: &mut FreshNodeId) -> (RuleGraph, Vec<TangleDiagnostic>) {
+    let _ = file;
+    #[allow(unused_mut)]
+    let mut diagnostics = vec![];
     let entry_id = id_gen.fresh();
     let mut graph = create_graph(entry_id.clone());
 
@@ -58,5 +63,5 @@ pub fn lower_rule_toggle(checkbox_markdown: &str, _file: &str, id_gen: &mut Fres
         });
     }
 
-    graph
+    (graph, diagnostics)
 }
