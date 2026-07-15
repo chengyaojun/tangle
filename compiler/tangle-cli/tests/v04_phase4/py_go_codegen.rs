@@ -55,3 +55,47 @@ fn py_branch_body_recursion() {
     assert!(py.contains("# action: auto_approve"), "Py branch body should recurse, got:\n{}", py);
     assert!(py.contains("# action: manual_review"), "Py branch body should recurse");
 }
+
+#[test]
+fn go_decision_if_else_emission() {
+    let graph = make_decision_graph();
+    let go = emit_go(&graph, "ApprovalFlow");
+    assert!(go.contains("if amount < 100 {"), "Go should emit if with guard, got:\n{}", go);
+    assert!(go.contains("} else if amount < 1000 {"), "Go should emit }} else if, got:\n{}", go);
+}
+
+#[test]
+fn go_priority_ordering() {
+    let graph = make_decision_graph();
+    let go = emit_go(&graph, "ApprovalFlow");
+    let if_pos = go.find("if amount < 100 {").unwrap();
+    let else_if_pos = go.find("} else if amount < 1000 {").unwrap();
+    assert!(if_pos < else_if_pos, "priority 0 guard should come before priority 1");
+}
+
+#[test]
+fn go_branch_body_recursion() {
+    let graph = make_decision_graph();
+    let go = emit_go(&graph, "ApprovalFlow");
+    assert!(go.contains("// action: auto_approve"), "Go branch body should recurse, got:\n{}", go);
+    assert!(go.contains("// action: manual_review"), "Go branch body should recurse");
+}
+
+#[test]
+fn py_go_crossed_edge_skipped() {
+    let mut graph = make_decision_graph();
+    graph.nodes.push(IRNode {
+        id: "reject".into(), kind: IRNodeKind::Action, label: "reject".into(),
+        source_span: None, source_text: None, group: None, style: None,
+    });
+    graph.edges.push(IREdge {
+        from: "entry".into(), to: "reject".into(), kind: IREdgeKind::Crossed,
+        guard: None, source_span: None, priority: None, style: None,
+    });
+    let py = emit_python(&graph, "TestFlow");
+    let go = emit_go(&graph, "TestFlow");
+    assert!(py.contains("# skipped: crossed edge to reject"), "Py should emit crossed skip comment, got:\n{}", py);
+    assert!(go.contains("// skipped: crossed edge to reject"), "Go should emit crossed skip comment, got:\n{}", go);
+    assert!(!py.contains("# action: reject"), "Py should not emit crossed target as action");
+    assert!(!go.contains("// action: reject"), "Go should not emit crossed target as action");
+}
