@@ -53,8 +53,12 @@ fn main() {
     let ts: Value = serde_json::from_str(&ts_json).expect("parse ts-ir JSON");
     let rs: Value = serde_json::from_str(&rs_json).expect("parse rs-ir JSON");
 
-    let ts_normalized = normalize(ts);
-    let rs_normalized = normalize(rs);
+    let ts_lifted = lift_functions(ts);
+    let rs_lifted = lift_functions(rs);
+    let ts_id_map = build_id_map(&ts_lifted);
+    let rs_id_map = build_id_map(&rs_lifted);
+    let ts_normalized = normalize(ts_lifted, &ts_id_map);
+    let rs_normalized = normalize(rs_lifted, &rs_id_map);
 
     if ts_normalized == rs_normalized {
         println!("MATCH");
@@ -69,10 +73,80 @@ fn main() {
     }
 }
 
-/// Recursively strip source span fields and sort object keys for stable
-/// comparison. Arrays are compared element-wise in their original order (node
-/// IDs are positional within the IR graph and meaningful).
-fn normalize(v: Value) -> Value {
+/// Phase 1 of normalization pipeline: lift functions[0] to top-level.
+///
+/// Rust IR wraps nodes/edges/entryNodeId inside `functions[0]`, while TS IR
+/// places them at top level. This function promotes functions[0] to top level
+/// and strips the `functions`, empty `importedStdlib`, and empty `stdlibImports`
+/// keys. If `functions` is absent or empty, the input is returned unchanged
+/// (minus empty stdlib arrays).
+fn lift_functions(v: Value) -> Value {
+    let mut map = match v {
+        Value::Object(m) => m,
+        other => return other,
+    };
+
+    // Lift functions[0] if present
+    if let Some(functions_val) = map.remove("functions") {
+        if let Value::Array(arr) = functions_val {
+            if let Some(first) = arr.into_iter().next() {
+                if let Value::Object(func_map) = first {
+                    // Only lift IR schema fields; strip function metadata (name/params/receiver)
+                    const LIFT_FIELDS: &[&str] = &["nodes", "edges", "errorEdges", "entryNodeId"];
+                    for (k, v) in func_map {
+                        if LIFT_FIELDS.contains(&k.as_str()) {
+                            // Don't overwrite existing top-level keys
+                            map.entry(k).or_insert(v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Strip empty stdlib arrays
+    if let Some(Value::Array(arr)) = map.get("importedStdlib") {
+        if arr.is_empty() {
+            map.remove("importedStdlib");
+        }
+    }
+    if let Some(Value::Array(arr)) = map.get("stdlibImports") {
+        if arr.is_empty() {
+            map.remove("stdlibImports");
+        }
+    }
+
+    Value::Object(map)
+}
+
+/// Phase 2 of normalization pipeline: build a mapping from original node IDs
+/// to positional IDs ("node0", "node1", ...).
+///
+/// TS IR uses semantic IDs (entry1, bind2, ret4), Rust IR uses positional IDs
+/// (n0, n1, n2). Both share the same node array order, so positional remapping
+/// produces identical IDs on both sides.
+fn build_id_map(v: &Value) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    if let Some(nodes) = v.get("nodes").and_then(|n| n.as_array()) {
+        for (i, node) in nodes.iter().enumerate() {
+            if let Some(id) = node.get("id").and_then(|id| id.as_str()) {
+                map.insert(id.to_string(), format!("node{}", i));
+            }
+        }
+    }
+    map
+}
+
+/// Recursively normalize an IR value for stable comparison:
+/// - strip source span fields (see `SPAN_FIELDS`)
+/// - strip null `guard` fields (F-008)
+/// - normalize label "return" → "exit" (F-011)
+/// - remap node IDs to positional ids via `id_map` (F-007)
+/// - sort object keys for stable comparison
+///
+/// Arrays are compared element-wise in their original order (node IDs are
+/// positional within the IR graph and meaningful).
+fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Value {
     match v {
         Value::Object(map) => {
             let mut filtered: Vec<(String, Value)> = Vec::with_capacity(map.len());
@@ -80,14 +154,187 @@ fn normalize(v: Value) -> Value {
                 if SPAN_FIELDS.contains(&k.as_str()) {
                     continue;
                 }
-                filtered.push((k, normalize(v)));
+                // F-008: strip null guard
+                if k == "guard" && v == Value::Null {
+                    continue;
+                }
+                // F-011: normalize label "return" → "exit"
+                if k == "label" {
+                    if let Some(s) = v.as_str() {
+                        if s == "return" {
+                            filtered.push((k, Value::String("exit".into())));
+                            continue;
+                        }
+                    }
+                }
+                // F-007: remap node IDs
+                if k == "id" || k == "from" || k == "to" || k == "entryNodeId" {
+                    if let Some(s) = v.as_str() {
+                        if let Some(remapped) = id_map.get(s) {
+                            filtered.push((k, Value::String(remapped.clone())));
+                            continue;
+                        }
+                    }
+                }
+                filtered.push((k, normalize(v, id_map)));
             }
             // Sort keys for stable comparison (ignores JSON key order)
             filtered.sort_by(|a, b| a.0.cmp(&b.0));
             let collected: Map<String, Value> = filtered.into_iter().collect();
             Value::Object(collected)
         }
-        Value::Array(arr) => Value::Array(arr.into_iter().map(normalize).collect()),
+        Value::Array(arr) => Value::Array(arr.into_iter().map(|v| normalize(v, id_map)).collect()),
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn lift_functions_promotes_first_function_to_top_level() {
+        let input = json!({
+            "functions": [{
+                "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
+                "edges": [{"from": "n0", "to": "n1", "kind": "control"}],
+                "entryNodeId": "n0",
+                "name": "main",
+                "params": [],
+                "receiver": null
+            }],
+            "importedStdlib": [],
+            "stdlibImports": []
+        });
+        let result = lift_functions(input);
+        assert!(result.get("functions").is_none(), "functions should be removed");
+        assert!(result.get("importedStdlib").is_none(), "empty importedStdlib should be removed");
+        assert!(result.get("stdlibImports").is_none(), "empty stdlibImports should be removed");
+        assert!(result.get("name").is_none(), "function metadata 'name' should NOT be lifted");
+        assert!(result.get("params").is_none(), "function metadata 'params' should NOT be lifted");
+        assert!(result.get("receiver").is_none(), "function metadata 'receiver' should NOT be lifted");
+        assert_eq!(result["entryNodeId"], "n0");
+        assert_eq!(result["nodes"][0]["id"], "n0");
+        assert_eq!(result["edges"][0]["from"], "n0");
+    }
+
+    #[test]
+    fn lift_functions_preserves_flat_ir_without_functions_key() {
+        let input = json!({
+            "nodes": [{"id": "entry", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "entry"
+        });
+        let result = lift_functions(input);
+        assert_eq!(result["nodes"][0]["id"], "entry");
+        assert_eq!(result["entryNodeId"], "entry");
+    }
+
+    #[test]
+    fn id_remap_normalizes_n0_to_node0() {
+        let input = json!({
+            "nodes": [{"id": "n0"}, {"id": "n1"}],
+            "edges": [{"from": "n0", "to": "n1"}],
+            "entryNodeId": "n0"
+        });
+        let id_map = build_id_map(&input);
+        assert_eq!(id_map.get("n0"), Some(&"node0".to_string()));
+        assert_eq!(id_map.get("n1"), Some(&"node1".to_string()));
+    }
+
+    #[test]
+    fn id_remap_normalizes_entry1_to_node0() {
+        let input = json!({
+            "nodes": [{"id": "entry1"}, {"id": "bind2"}],
+            "entryNodeId": "entry1"
+        });
+        let id_map = build_id_map(&input);
+        assert_eq!(id_map.get("entry1"), Some(&"node0".to_string()));
+        assert_eq!(id_map.get("bind2"), Some(&"node1".to_string()));
+    }
+
+    #[test]
+    fn id_remap_applies_to_edges_and_entry() {
+        let input = json!({
+            "nodes": [{"id": "n0"}, {"id": "n1"}],
+            "edges": [{"from": "n0", "to": "n1", "kind": "control"}],
+            "entryNodeId": "n0"
+        });
+        let id_map = build_id_map(&input);
+        let normalized = normalize(input, &id_map);
+        assert_eq!(normalized["nodes"][0]["id"], "node0");
+        assert_eq!(normalized["nodes"][1]["id"], "node1");
+        assert_eq!(normalized["edges"][0]["from"], "node0");
+        assert_eq!(normalized["edges"][0]["to"], "node1");
+        assert_eq!(normalized["entryNodeId"], "node0");
+    }
+
+    #[test]
+    fn end_to_end_expression_style_fixture_matches() {
+        // Simulate TS IR (semantic IDs, flat structure, return label)
+        let ts = json!({
+            "nodes": [
+                {"id": "entry1", "kind": "action", "label": "main"},
+                {"id": "ret4", "kind": "terminal", "label": "return"}
+            ],
+            "edges": [
+                {"from": "entry1", "to": "ret4", "kind": "control", "guard": null}
+            ],
+            "entryNodeId": "entry1"
+        });
+        // Simulate Rust IR (positional IDs, functions wrapper, exit label)
+        let rs = json!({
+            "functions": [{
+                "nodes": [
+                    {"id": "n0", "kind": "action", "label": "main"},
+                    {"id": "n1", "kind": "terminal", "label": "exit"}
+                ],
+                "edges": [
+                    {"from": "n0", "to": "n1", "kind": "control", "guard": null}
+                ],
+                "entryNodeId": "n0"
+            }],
+            "importedStdlib": [],
+            "stdlibImports": []
+        });
+
+        let ts_lifted = lift_functions(ts);
+        let rs_lifted = lift_functions(rs);
+        let ts_id_map = build_id_map(&ts_lifted);
+        let rs_id_map = build_id_map(&rs_lifted);
+        let ts_norm = normalize(ts_lifted, &ts_id_map);
+        let rs_norm = normalize(rs_lifted, &rs_id_map);
+        assert_eq!(ts_norm, rs_norm, "TS and Rust IR should match after normalization");
+    }
+
+    #[test]
+    fn null_guard_stripped() {
+        let input = json!({
+            "edges": [{"from": "n0", "to": "n1", "kind": "control", "guard": null}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert!(result["edges"][0].get("guard").is_none(), "null guard should be stripped");
+    }
+
+    #[test]
+    fn non_null_guard_preserved() {
+        let input = json!({
+            "edges": [{"from": "n0", "to": "n1", "kind": "condition", "guard": "x > 0"}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert_eq!(result["edges"][0]["guard"], "x > 0");
+    }
+
+    #[test]
+    fn return_label_normalized_to_exit() {
+        let input = json!({
+            "nodes": [{"id": "n0", "kind": "terminal", "label": "return"}]
+        });
+        let id_map = std::collections::HashMap::new();
+        let result = normalize(input, &id_map);
+        assert_eq!(result["nodes"][0]["label"], "exit");
     }
 }

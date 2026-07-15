@@ -96,9 +96,7 @@ fn collect_rule_graphs(
                 }
                 RuleKind::Table => lower_rule_table_with_diagnostics(&rule.source, file, id_gen),
                 RuleKind::Tree => lower_rule_tree(&rule.source, file, id_gen),
-                RuleKind::Toggle => {
-                    (lower_rule_toggle(&rule.source, file, id_gen), vec![])
-                }
+                RuleKind::Toggle => lower_rule_toggle(&rule.source, file, id_gen),
             };
             out.push(sub_graph);
             diagnostics.extend(rule_diags);

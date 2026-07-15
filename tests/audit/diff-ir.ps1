@@ -23,17 +23,15 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + 
 $root = (Get-Item $PSScriptRoot).Parent.Parent.FullName
 Set-Location $root
 
-# --- Known DIFF allowlist (F-007~F-012, deferred to v0.3.0) ------------------
-# These fixtures have IR schema divergence between TS reference and Rust
-# compiler (node ID naming, edge guard field, top-level functions array,
-# sourceText field, terminal node label). All are documented in
-# docs/audit/findings.md and will be resolved in v0.3.0 via ir-diff
-# normalization or IR schema unification.
+# --- Known DIFF allowlist ----------------------------------------------------
+# F-007~F-012 closed in Phase 4 via ir-diff normalization (lift_functions,
+# build_id_map, null guard strip, label normalize). 3 of 4 fixtures now MATCH.
+# payment.tangle remains KNOWN_DIFF due to structural difference: Rust IR has
+# both top-level merged nodes AND functions array (dual-entry), while TS IR
+# uses a single shared entry. This is a deeper IR generation difference that
+# needs separate investigation (future phase).
 $KnownDiffs = @(
-    "expression.tangle",   # F-007/F-008/F-009/F-011/F-012
-    "hello.tangle",        # F-007/F-008/F-009/F-011/F-012
-    "user.tangle",         # F-007/F-008/F-009/F-011/F-012
-    "payment.tangle"       # F-007/F-008/F-009/F-011/F-012 (fixture fixed in F-006)
+    "payment.tangle"       # structural: Rust dual-entry (top-level + functions) vs TS shared entry
 )
 
 # --- Build ir-diff if needed -------------------------------------------------
