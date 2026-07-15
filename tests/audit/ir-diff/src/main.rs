@@ -91,9 +91,13 @@ fn lift_functions(v: Value) -> Value {
         if let Value::Array(arr) = functions_val {
             if let Some(first) = arr.into_iter().next() {
                 if let Value::Object(func_map) = first {
+                    // Only lift IR schema fields; strip function metadata (name/params/receiver)
+                    const LIFT_FIELDS: &[&str] = &["nodes", "edges", "errorEdges", "entryNodeId"];
                     for (k, v) in func_map {
-                        // Don't overwrite existing top-level keys
-                        map.entry(k).or_insert(v);
+                        if LIFT_FIELDS.contains(&k.as_str()) {
+                            // Don't overwrite existing top-level keys
+                            map.entry(k).or_insert(v);
+                        }
                     }
                 }
             }
@@ -195,7 +199,10 @@ mod tests {
             "functions": [{
                 "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
                 "edges": [{"from": "n0", "to": "n1", "kind": "control"}],
-                "entryNodeId": "n0"
+                "entryNodeId": "n0",
+                "name": "main",
+                "params": [],
+                "receiver": null
             }],
             "importedStdlib": [],
             "stdlibImports": []
@@ -204,6 +211,9 @@ mod tests {
         assert!(result.get("functions").is_none(), "functions should be removed");
         assert!(result.get("importedStdlib").is_none(), "empty importedStdlib should be removed");
         assert!(result.get("stdlibImports").is_none(), "empty stdlibImports should be removed");
+        assert!(result.get("name").is_none(), "function metadata 'name' should NOT be lifted");
+        assert!(result.get("params").is_none(), "function metadata 'params' should NOT be lifted");
+        assert!(result.get("receiver").is_none(), "function metadata 'receiver' should NOT be lifted");
         assert_eq!(result["entryNodeId"], "n0");
         assert_eq!(result["nodes"][0]["id"], "n0");
         assert_eq!(result["edges"][0]["from"], "n0");
