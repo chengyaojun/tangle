@@ -107,6 +107,7 @@ export { lowerRuleTable } from "./ir/ruleTable.js";
 export { lowerRuleTree } from "./ir/ruleTree.js";
 export { lowerRuleToggle } from "./ir/ruleToggle.js";
 export type { ToggleLowerResult } from "./ir/ruleToggle.js";
+export type { TreeLowerResult, TreeIRNode } from "./ir/ruleTree.js";
 export { checkIRVisibility } from "./ir/visibility.js";
 export { validateIR } from "./ir/validate.js";
 export { compileToIR } from "./ir/compileToIR.js";
