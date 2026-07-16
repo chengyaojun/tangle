@@ -1,5 +1,6 @@
 import type { MarkdownNode } from "../markdown/parseMarkdown.js";
 import type {
+  SourceSpan,
   TangleCodeBlock,
   TangleDiagnostic,
   TangleDirective,
@@ -18,6 +19,73 @@ export type CompileModuleInput = {
   source: string;
 };
 
+// ─── Rule detection (mirror of Rust determine_rule_kind / RuleData) ────────
+// TangleHeading (model.ts) lacks a `rule` field (present on Rust TangleHeading).
+// We attach rule data as an extra property at runtime; compileToIR.ts reads it
+// via a type assertion. This avoids modifying model.ts.
+
+export type RuleKind = "flow" | "table" | "tree" | "toggle";
+
+export type RuleData = {
+  kind: RuleKind;
+  source: string;
+  span: SourceSpan;
+};
+
+function isRuleHeading(title: string): boolean {
+  return title.startsWith("Rule:") || title.startsWith("rule:");
+}
+
+/// Detect rule kind from body source. Priority order mirrors Rust
+/// `determine_rule_kind` in compile_module.rs:
+/// 1. Mermaid fenced code block → Flow
+/// 2. Pipe table (2+ lines with |) → Table
+/// 3. Checkbox items (- [ / * [) → Toggle
+/// 4. Bullet list items (* / - ) → Tree
+function determineRuleKind(source: string): RuleKind | null {
+  if (source.includes("```mermaid") || source.includes("graph TD") || source.includes("graph LR")) {
+    return "flow";
+  }
+  const pipeLines = source.split("\n").filter(l => l.includes("|"));
+  if (pipeLines.length >= 2) {
+    return "table";
+  }
+  if (source.split("\n").some(l => {
+    const t = l.trimStart();
+    return t.startsWith("- [") || t.startsWith("* [");
+  })) {
+    return "toggle";
+  }
+  if (source.split("\n").some(l => {
+    const t = l.trimStart();
+    return t.startsWith("* ") || t.startsWith("- ");
+  })) {
+    return "tree";
+  }
+  return null;
+}
+
+/// Extract the raw markdown text of the rule body from the source by using
+/// body nodes' position info. Mirrors Rust's line-range tracking in
+/// compile_module.rs (pending_rule_line_start / pending_rule_line_end).
+function extractRuleSource(body: MarkdownNode[], source: string): string {
+  let minStartLine = Infinity;
+  let maxEndLine = 0;
+  let found = false;
+  for (const node of body) {
+    if (node.position) {
+      const startLine = node.position.start.line;
+      const endLine = node.position.end.line;
+      if (startLine < minStartLine) minStartLine = startLine;
+      if (endLine > maxEndLine) maxEndLine = endLine;
+      found = true;
+    }
+  }
+  if (!found) return "";
+  const lines = source.split("\n");
+  return lines.slice(minStartLine - 1, maxEndLine).join("\n");
+}
+
 export function compileModule(input: CompileModuleInput): TangleModule {
   const root = parseMarkdown(input.source);
   const headings: TangleHeading[] = [];
@@ -32,7 +100,7 @@ export function compileModule(input: CompileModuleInput): TangleModule {
 
     const nextHeadingIndex = findNextHeadingIndex(children, index + 1);
     const body = children.slice(index + 1, nextHeadingIndex);
-    headings.push(buildHeading(input.file, node!, body, diagnostics));
+    headings.push(buildHeading(input.file, node!, body, input.source, diagnostics));
   }
 
   buildHeadingTree(headings); // populates children for tree navigation
@@ -74,6 +142,7 @@ function buildHeading(
   file: string,
   node: MarkdownNode,
   body: MarkdownNode[],
+  source: string,
   diagnostics: TangleDiagnostic[]
 ): TangleHeading {
   const parsed = parseHeadingText(plainText(node));
@@ -156,6 +225,21 @@ function buildHeading(
   if (parsed.symbolName) {
     heading.symbolName = parsed.symbolName;
   }
+
+  // Extract rule data if this is a rule heading (mirror of Rust compile_module.rs).
+  // TangleHeading has no `rule` field, so we attach it as an extra property.
+  if (isRuleHeading(parsed.title)) {
+    const ruleSource = extractRuleSource(body, source);
+    const kind = determineRuleKind(ruleSource);
+    if (kind) {
+      (heading as TangleHeading & { rule?: RuleData }).rule = {
+        kind,
+        source: ruleSource,
+        span: heading.span,
+      };
+    }
+  }
+
   return heading;
 }
 

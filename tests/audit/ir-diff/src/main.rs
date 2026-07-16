@@ -141,6 +141,9 @@ fn build_id_map(v: &Value) -> std::collections::HashMap<String, String> {
 /// Recursively normalize an IR value for stable comparison:
 /// - strip source span fields (see `SPAN_FIELDS`)
 /// - strip null `guard` fields (F-008)
+/// - strip null optional IRNode/IREdge fields (`group`/`style`/`priority`)
+///   that Rust omits via `skip_serializing_if = "Option::is_none"` but TS
+///   serializes as `null` (Phase 5: rule lowering port produces these fields)
 /// - normalize label "return" → "exit" (F-011)
 /// - remap node IDs to positional ids via `id_map` (F-007)
 /// - sort object keys for stable comparison
@@ -157,6 +160,12 @@ fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Va
                 }
                 // F-008: strip null guard
                 if k == "guard" && v == Value::Null {
+                    continue;
+                }
+                // Phase 5: strip null optional fields that Rust omits via
+                // `skip_serializing_if = "Option::is_none"` (group/style/priority)
+                // but TS serializes as `null`.
+                if v == Value::Null && matches!(k.as_str(), "group" | "style" | "priority") {
                     continue;
                 }
                 // F-011: normalize label "return" → "exit"

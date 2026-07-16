@@ -26,13 +26,10 @@ Set-Location $root
 # --- Known DIFF allowlist ----------------------------------------------------
 # F-007~F-012 closed in Phase 4 via ir-diff normalization (lift_functions,
 # build_id_map, null guard strip, label normalize). 3 of 4 fixtures now MATCH.
-# payment.tangle remains KNOWN_DIFF due to structural difference: Rust IR has
-# both top-level merged nodes AND functions array (dual-entry), while TS IR
-# uses a single shared entry. This is a deeper IR generation difference that
-# needs separate investigation (future phase).
-$KnownDiffs = @(
-    "payment.tangle"       # structural: Rust dual-entry (top-level + functions) vs TS shared entry
-)
+# Phase 5: payment.tangle now MATCHes — TS port implements multi-function mode
+# (hasMainCallable + collectFunctions + lowerFunctionBody) mirroring Rust's
+# dual-entry (top-level graph + functions[]). $KnownDiffs cleared.
+$KnownDiffs = @()
 
 # --- Build ir-diff if needed -------------------------------------------------
 $irDiffBin = Join-Path $PSScriptRoot "ir-diff\target\release\ir-diff.exe"
@@ -93,13 +90,17 @@ foreach ($fixture in $fixtures) {
     }
 
     # --- Check for empty TS IR (F-010: rule lowering not implemented) --------
+    # Phase 5: multi-function mode produces empty top-level nodes with non-empty
+    # functions[] (e.g. payment.tangle). Only skip when BOTH are empty.
     $tsContent = Get-Content $tsIr -Raw -ErrorAction SilentlyContinue
     if ($null -eq $tsContent) { $tsContent = "" }
     try {
         $tsJson = $tsContent | ConvertFrom-Json
         $tsNodeCount = 0
         if ($tsJson.nodes) { $tsNodeCount = @($tsJson.nodes).Count }
-        if ($tsNodeCount -eq 0) {
+        $tsFuncCount = 0
+        if ($tsJson.functions) { $tsFuncCount = @($tsJson.functions).Count }
+        if ($tsNodeCount -eq 0 -and $tsFuncCount -eq 0) {
             Write-Host "[SKIPPED] $name - TS reference emits empty IR (F-010: rule lowering not implemented)"
             $skipCount++
             continue
