@@ -104,6 +104,7 @@ export { createGraph, freshNodeId, resetNodeCounter } from "./ir/graph.js";
 export { lowerStatements } from "./ir/lower.js";
 export { lowerRuleFlow } from "./ir/ruleFlow.js";
 export { lowerRuleTable } from "./ir/ruleTable.js";
+export type { TableLowerResult } from "./ir/ruleTable.js";
 export { lowerRuleTree } from "./ir/ruleTree.js";
 export { lowerRuleToggle } from "./ir/ruleToggle.js";
 export type { ToggleLowerResult } from "./ir/ruleToggle.js";
