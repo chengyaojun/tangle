@@ -1,6 +1,18 @@
 use crate::ir::graph::*;
 use crate::model::{SourceSpan, TangleDiagnostic};
 
+/// Lower a single `@rule.toggle` block to IR.
+///
+/// # 跨块语义
+///
+/// 每次调用独立处理单个 toggle 块。跨 `@rule.toggle` 块的 group/style
+/// 不继承——前一块的 pending_group/pending_style 不会流入下一块。
+/// 如需为多个块设置统一 group，必须在每个块内显式声明。
+///
+/// # 单块内语义
+///
+/// `pending_group`/`pending_style` 缓存遇 `<!-- group: X -->` 行设置，
+/// 遇 checkbox 行消费并清空，遇非注释非 checkbox 行清空。
 pub fn lower_rule_toggle(checkbox_markdown: &str, file: &str, id_gen: &mut FreshNodeId) -> (RuleGraph, Vec<TangleDiagnostic>) {
     let mut diagnostics = vec![];
     let entry_id = id_gen.fresh();
