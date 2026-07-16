@@ -103,6 +103,7 @@ export type { IREdge, IREdgeKind, IRErrorEdge, IRNode, IRNodeKind, RuleGraph } f
 export { createGraph, freshNodeId, resetNodeCounter } from "./ir/graph.js";
 export { lowerStatements } from "./ir/lower.js";
 export { lowerRuleFlow } from "./ir/ruleFlow.js";
+export type { FlowLowerResult } from "./ir/ruleFlow.js";
 export { lowerRuleTable } from "./ir/ruleTable.js";
 export type { TableLowerResult } from "./ir/ruleTable.js";
 export { lowerRuleTree } from "./ir/ruleTree.js";
