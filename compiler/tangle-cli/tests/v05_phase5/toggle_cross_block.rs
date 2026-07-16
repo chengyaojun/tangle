@@ -10,8 +10,8 @@
 //! Fixture: `tests/v05_phase5/multi-toggle-blocks.tangle.md` — 两个 toggle 块，
 //! 第一块声明 group: UI / style: highlight，第二块不声明，验证第二块为 None。
 
-use tangle_cli::ir::lower_rule_toggle;
 use tangle_cli::ir::graph::FreshNodeId;
+use tangle_cli::ir::lower_rule_toggle;
 
 #[test]
 fn toggle_block_isolation_no_group_inheritance() {
@@ -25,12 +25,24 @@ fn toggle_block_isolation_no_group_inheritance() {
     let (graph2, _diags) = lower_rule_toggle(md2, "test.tangle", &mut id_gen);
 
     // 第一块的 toggle 节点 group = "UI"
-    let toggle1 = graph1.nodes.iter().find(|n| n.label.contains("enable_ui")).unwrap();
+    let toggle1 = graph1
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("enable_ui"))
+        .unwrap();
     assert_eq!(toggle1.group.as_deref(), Some("UI"));
 
     // 第二块的 toggle 节点 group = None（不继承）
-    let toggle2 = graph2.nodes.iter().find(|n| n.label.contains("enable_crypto")).unwrap();
-    assert!(toggle2.group.is_none(), "second block should not inherit group, got: {:?}", toggle2.group);
+    let toggle2 = graph2
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("enable_crypto"))
+        .unwrap();
+    assert!(
+        toggle2.group.is_none(),
+        "second block should not inherit group, got: {:?}",
+        toggle2.group
+    );
 }
 
 #[test]
@@ -42,11 +54,23 @@ fn toggle_block_isolation_no_style_inheritance() {
     let md2 = "- [ ] `flag2`: desc";
     let (graph2, _diags) = lower_rule_toggle(md2, "test.tangle", &mut id_gen);
 
-    let toggle1 = graph1.nodes.iter().find(|n| n.label.contains("flag1")).unwrap();
+    let toggle1 = graph1
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("flag1"))
+        .unwrap();
     assert_eq!(toggle1.style.as_deref(), Some("highlight"));
 
-    let toggle2 = graph2.nodes.iter().find(|n| n.label.contains("flag2")).unwrap();
-    assert!(toggle2.style.is_none(), "second block should not inherit style, got: {:?}", toggle2.style);
+    let toggle2 = graph2
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("flag2"))
+        .unwrap();
+    assert!(
+        toggle2.style.is_none(),
+        "second block should not inherit style, got: {:?}",
+        toggle2.style
+    );
 }
 
 #[test]
@@ -59,10 +83,18 @@ fn toggle_explicit_group_per_block_works() {
     let (graph1, _diags) = lower_rule_toggle(md1, "test.tangle", &mut id_gen);
     let (graph2, _diags) = lower_rule_toggle(md2, "test.tangle", &mut id_gen);
 
-    let toggle1 = graph1.nodes.iter().find(|n| n.label.contains("flag1")).unwrap();
+    let toggle1 = graph1
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("flag1"))
+        .unwrap();
     assert_eq!(toggle1.group.as_deref(), Some("A"));
 
-    let toggle2 = graph2.nodes.iter().find(|n| n.label.contains("flag2")).unwrap();
+    let toggle2 = graph2
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("flag2"))
+        .unwrap();
     assert_eq!(toggle2.group.as_deref(), Some("B"));
 }
 
@@ -73,6 +105,14 @@ fn toggle_pending_cleared_on_non_checkbox_line() {
     let mut id_gen = FreshNodeId::new();
     let (graph, _diags) = lower_rule_toggle(md, "test.tangle", &mut id_gen);
 
-    let toggle = graph.nodes.iter().find(|n| n.label.contains("flag")).unwrap();
-    assert!(toggle.group.is_none(), "group should be cleared by non-checkbox line, got: {:?}", toggle.group);
+    let toggle = graph
+        .nodes
+        .iter()
+        .find(|n| n.label.contains("flag"))
+        .unwrap();
+    assert!(
+        toggle.group.is_none(),
+        "group should be cleared by non-checkbox line, got: {:?}",
+        toggle.group
+    );
 }
