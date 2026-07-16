@@ -1,6 +1,11 @@
 use crate::ir::graph::*;
 use std::collections::{HashSet, VecDeque};
 
+/// Maximum recursion depth for `emit_branch_body`. Beyond this the emitter
+/// stops recursing and emits a `// max depth reached` comment to prevent
+/// stack overflow on pathological graphs.
+const MAX_BRANCH_DEPTH: usize = 100;
+
 /// Emit metadata comments (group, style) for a node. Returns comment lines with given indent.
 fn emit_node_comments(node: &IRNode, indent: &str) -> String {
     let mut out = String::new();
@@ -49,7 +54,11 @@ fn emit_branch_body<'a>(
     edges: &'a [IREdge],
     visited: &mut HashSet<&'a str>,
     indent: &str,
+    depth: usize,
 ) -> String {
+    if depth >= MAX_BRANCH_DEPTH {
+        return format!("{}// max depth reached\n", indent);
+    }
     let mut out = String::new();
     if visited.contains(target_id) {
         return out;
@@ -86,7 +95,7 @@ fn emit_branch_body<'a>(
 
     for edge in edges {
         if edge.from == node.id && edge.kind != IREdgeKind::Crossed {
-            out.push_str(&emit_branch_body(&edge.to, nodes, edges, visited, indent));
+            out.push_str(&emit_branch_body(&edge.to, nodes, edges, visited, indent, depth + 1));
         }
     }
     out
@@ -100,6 +109,7 @@ fn emit_decision_branch<'a>(
     edges: &'a [IREdge],
     visited: &mut HashSet<&'a str>,
     indent: &str,
+    depth: usize,
 ) -> String {
     let mut out = String::new();
     let out_edges: Vec<&IREdge> = edges.iter().filter(|e| e.from == node.id).collect();
@@ -139,7 +149,7 @@ fn emit_decision_branch<'a>(
             out.push_str(&format!("{}}} else if {} {{\n", indent, guard));
         }
         let mut branch_visited = visited.clone();
-        out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+        out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent, depth + 1));
         all_branch_visited.extend(branch_visited.iter().copied());
     }
 
@@ -148,7 +158,7 @@ fn emit_decision_branch<'a>(
         for edge in &unguarded {
             out.push_str(&emit_edge_comments(edge, &inner_indent));
             let mut branch_visited = visited.clone();
-            out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent));
+            out.push_str(&emit_branch_body(&edge.to, nodes, edges, &mut branch_visited, &inner_indent, depth + 1));
             all_branch_visited.extend(branch_visited.iter().copied());
         }
         out.push_str(&format!("{}}}\n", indent));
@@ -305,7 +315,7 @@ fn emit_go_function_body(nodes: &[IRNode], edges: &[IREdge], entry_node_id: &str
                     e.from == node.id && e.guard.is_some() && e.kind != IREdgeKind::Crossed
                 });
                 if has_guarded {
-                    out.push_str(&emit_decision_branch(node, nodes, edges, &mut visited, "    "));
+                    out.push_str(&emit_decision_branch(node, nodes, edges, &mut visited, "    ", 0));
                 } else {
                     out.push_str(&format!("    // decision: {}\n", node.label));
                 }

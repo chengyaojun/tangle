@@ -88,6 +88,10 @@ path = "tests/v04_phase4/toggle_lowering.rs"
 name = "phase5_dual_entry"
 path = "tests/v05_phase5/dual_entry_fix.rs"
 
+[[test]]
+name = "phase5_recursion_depth"
+path = "tests/v05_phase5/recursion_depth.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
