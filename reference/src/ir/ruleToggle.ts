@@ -1,11 +1,11 @@
-import type { RuleGraph, IRNode, IREdge, TangleDiagnostic } from "./graph.js";
-import type { SourceSpan } from "../model.js";
+import type { RuleGraph, IRNode, IREdge } from "./graph.js";
+import type { SourceSpan, TangleDiagnostic } from "../model.js";
 import { createGraph, freshNodeId, resetNodeCounter } from "./graph.js";
 
 // IRNode in graph.ts lacks sourceText/group/style (present on Rust IRNode).
 // Define an extended node type carrying the extra metadata. ToggleIRNode is
 // structurally assignable to IRNode, so it can be pushed onto graph.nodes.
-type ToggleIRNode = IRNode & {
+export type ToggleIRNode = IRNode & {
   sourceText: string | null;
   group: string | null;
   style: string | null;
@@ -30,7 +30,7 @@ export function lowerRuleToggle(checkboxMarkdown: string, file: string): ToggleL
     endLine: 0,
     endColumn: 0,
   };
-  graph.nodes.push({
+  const entryNode: ToggleIRNode = {
     id: entryId,
     kind: "compute",
     label: "toggle.entry",
@@ -38,7 +38,8 @@ export function lowerRuleToggle(checkboxMarkdown: string, file: string): ToggleL
     sourceText: null,
     group: null,
     style: null,
-  });
+  };
+  graph.nodes.push(entryNode);
 
   let pendingGroup: string | null = null;
   let pendingStyle: string | null = null;
