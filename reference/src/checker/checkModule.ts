@@ -8,6 +8,7 @@ import { checkExpression } from "./check.js";
 import { createEnv } from "./env.js";
 import { ErrorRegistry } from "./errors.js";
 import { parseTypeExpr } from "../parser/typeParser.js";
+import { registerBuiltins } from "./builtins.js";
 
 export type CheckedModule = TangleModule & {
   parsedBlocks: ParsedCodeBlock[];
@@ -48,6 +49,7 @@ export function checkModule(module: TangleModule): CheckedModule {
     const checkEnv = createEnv();
     checkEnv.structs = env.structs;
     checkEnv.interfaces = env.interfaces;
+    registerBuiltins(checkEnv);
     // Attach errorRegistry to env for propagation checking
     checkEnv.errorRegistry = errorRegistry;
 

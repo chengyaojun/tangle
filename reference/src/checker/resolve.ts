@@ -111,7 +111,7 @@ function buildCallableSignature(heading: TangleHeading): CallableSignature {
     }
     params.push({ name: param.name, type });
   }
-  return { params, returns: { kind: "primitive", name: "Bool" } };
+  return { params, returns: { kind: "any" } };
 }
 
 export function typeExprToType(te: TypeExpr): Type {

@@ -55,6 +55,7 @@ export type TypeVariable = {
 export type CallableSignature = {
   params: { name: string; type: Type }[];
   returns: Type;
+  is_variadic?: boolean;
 };
 
 export function typesEqual(a: Type, b: Type): boolean {

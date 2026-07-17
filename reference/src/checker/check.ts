@@ -68,7 +68,10 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
       if (calleeType.kind === "function") {
         return [calleeType.returns, diags];
       }
-      return [{ kind: "primitive", name: "Bool" }, diags];
+      if (calleeType.kind === "struct") {
+        return [calleeType, diags];
+      }
+      return [{ kind: "any" }, diags];
     }
 
     case "binary": {
