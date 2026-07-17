@@ -96,6 +96,10 @@ path = "tests/v05_phase5/recursion_depth.rs"
 name = "phase5_toggle_cross_block"
 path = "tests/v05_phase5/toggle_cross_block.rs"
 
+[[test]]
+name = "phase6_generics_inference"
+path = "tests/v06_phase6/generics_inference.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
