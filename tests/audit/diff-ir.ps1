@@ -56,7 +56,7 @@ if (-not (Test-Path $tsEntry)) {
 }
 
 # --- Collect fixtures --------------------------------------------------------
-$fixtures = Get-ChildItem "tests\basic\*.tangle.md","tests\errors\*.tangle.md","tests\mvp\*.tangle.md","tests\rules\*.tangle.md","tests\structs\*.tangle.md" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+$fixtures = Get-ChildItem "tests\basic\*.tangle.md","tests\errors\*.tangle.md","tests\mvp\*.tangle.md","tests\rules\*.tangle.md","tests\structs\*.tangle.md","tests\v06_phase6\*.tangle.md" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
 
 $workDir = Join-Path $env:TEMP "tangle-diff-ir"
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
