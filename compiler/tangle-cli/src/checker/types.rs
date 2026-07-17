@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Type {
     Primitive(PrimitiveType),
     Struct(StructType),
@@ -12,51 +14,53 @@ pub enum Type {
     Any,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrimitiveType {
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StructType {
     pub name: String,
     pub fields: HashMap<String, Type>,
     pub methods: HashMap<String, CallableSignature>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SumType {
     pub variants: Vec<Type>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericTypeInstance {
     pub base: String,
     pub args: Vec<Type>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub returns: Box<Type>,
+    #[serde(default, rename = "isVariadic")]
     pub is_variadic: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InterfaceType {
     pub name: String,
     pub methods: HashMap<String, CallableSignature>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypeVariable {
     pub id: usize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CallableSignature {
     pub params: Vec<(String, Type)>,
     pub returns: Type,
+    #[serde(default, rename = "isVariadic")]
     pub is_variadic: bool,
 }
 
@@ -338,5 +342,74 @@ mod tests {
             }
             _ => panic!("Expected GenericInstance"),
         }
+    }
+}
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_primitive_serializes_with_kind_tag() {
+        let ty = Type::Primitive(PrimitiveType { name: "Int".into() });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "primitive");
+        assert_eq!(json["name"], "Int");
+    }
+
+    #[test]
+    fn test_generic_instance_serializes() {
+        let ty = Type::GenericInstance(GenericTypeInstance {
+            base: "List".into(),
+            args: vec![Type::Primitive(PrimitiveType { name: "Int".into() })],
+        });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "genericInstance");
+        assert_eq!(json["base"], "List");
+        assert_eq!(json["args"][0]["kind"], "primitive");
+        assert_eq!(json["args"][0]["name"], "Int");
+    }
+
+    #[test]
+    fn test_struct_serializes() {
+        let ty = Type::Struct(StructType {
+            name: "Order".into(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "struct");
+        assert_eq!(json["name"], "Order");
+    }
+
+    #[test]
+    fn test_sum_serializes() {
+        let ty = Type::Sum(SumType {
+            variants: vec![Type::Primitive(PrimitiveType { name: "Int".into() })],
+        });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "sum");
+        assert_eq!(json["variants"][0]["kind"], "primitive");
+    }
+
+    #[test]
+    fn test_any_serializes() {
+        let ty = Type::Any;
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "any");
+    }
+
+    #[test]
+    fn test_roundtrip_deserialize() {
+        let ty = Type::GenericInstance(GenericTypeInstance {
+            base: "Map".into(),
+            args: vec![
+                Type::Primitive(PrimitiveType { name: "String".into() }),
+                Type::Primitive(PrimitiveType { name: "Int".into() }),
+            ],
+        });
+        let json = serde_json::to_string(&ty).unwrap();
+        let back: Type = serde_json::from_str(&json).unwrap();
+        assert_eq!(ty, back);
     }
 }
