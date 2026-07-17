@@ -1,3 +1,4 @@
+use crate::codegen::type_map::tangle_type_to_py;
 use crate::ir::graph::*;
 use std::collections::{HashSet, VecDeque};
 
@@ -8,6 +9,19 @@ const MAX_BRANCH_DEPTH: usize = 100;
 
 fn sanitize_module_name(name: &str) -> String {
     name.replace(['.', '-'], "_")
+}
+
+/// Format an `IRParam` as a Python parameter: `name: annotation` when the
+/// type maps to a Python annotation, or just `name` when there is no
+/// annotation (`Type::Any` or missing type).
+fn format_py_param(p: &IRParam) -> String {
+    match &p.type_ {
+        Some(ty) => match tangle_type_to_py(ty) {
+            Some(annot) => format!("{}: {}", p.name, annot),
+            None => p.name.clone(),
+        },
+        None => p.name.clone(),
+    }
 }
 
 /// Emit metadata comments (group, style) for a node. Returns comment lines with given indent.
@@ -269,8 +283,8 @@ fn emit_multi_function_py(functions: &[IRFunction]) -> String {
     let mut out = String::new();
     for func in functions {
         let name = &func.name;
-        // params are currently empty (IRFunction.params will be expanded in a future phase)
-        out.push_str(&format!("def {}() -> Result:\n", name));
+        let params_str = func.params.iter().map(format_py_param).collect::<Vec<_>>().join(", ");
+        out.push_str(&format!("def {}({}) -> Result:\n", name, params_str));
         out.push_str(&emit_python_function_body(&func.nodes, &func.edges, &func.entry_node_id));
         out.push('\n');
     }

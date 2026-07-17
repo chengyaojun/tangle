@@ -100,3 +100,26 @@ fn test_ir_param_json_serialization_shape() {
         "type field should be omitted when None"
     );
 }
+
+#[test]
+fn test_py_emitter_generates_type_annotations() {
+    use tangle_cli::codegen::py_emitter::emit_python;
+
+    let path = fixture_path("v06_phase6", "generics.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let py = emit_python(&graph, "generics");
+
+    // process 函数应有类型注解（保留现有 `-> Result:` 返回类型约定）
+    assert!(
+        py.contains("def process(items: List[int], threshold: int) -> Result:"),
+        "Py output should contain typed signature, got:\n{}",
+        py
+    );
+
+    // main 函数无参数，不应有注解（保留 `-> Result:`）
+    assert!(
+        py.contains("def main() -> Result:"),
+        "Py output should contain untyped main, got:\n{}",
+        py
+    );
+}
