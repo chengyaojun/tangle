@@ -162,10 +162,13 @@ fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Va
                 if k == "guard" && v == Value::Null {
                     continue;
                 }
-                // Phase 5: strip null optional fields that Rust omits via
-                // `skip_serializing_if = "Option::is_none"` (group/style/priority)
-                // but TS serializes as `null`.
-                if v == Value::Null && matches!(k.as_str(), "group" | "style" | "priority") {
+                // Phase 5/6b: strip null optional fields that Rust omits via
+                // `skip_serializing_if = "Option::is_none"` (group/style/priority
+                // plus `type` on IRParam and `returnType` on IRFunction) but TS
+                // serializes as `null`. NOTE: `type` currently appears only on
+                // IRParam; if future IR schema adds `type: Option<X>` to other
+                // nodes/edges, revisit this list to avoid unintended stripping.
+                if v == Value::Null && matches!(k.as_str(), "group" | "style" | "priority" | "type" | "returnType") {
                     continue;
                 }
                 // F-011: normalize label "return" → "exit"
@@ -231,33 +234,41 @@ fn extract_functions_array(ir: &Value) -> Vec<Value> {
             return funcs.clone();
         }
     }
-    // Wrap top-level IR as a single function. Includes `errorEdges` so the
-    // wrapped shape matches an extracted Rust function (which carries it).
+    // Wrap top-level IR as a single function. Includes `errorEdges` and an
+    // empty `params` array so the wrapped shape matches an extracted Rust
+    // function (which always serializes `params` as `Vec<IRParam>`). Without
+    // `params: []`, a Rust function with no params (`params: []`) would
+    // falsely mismatch against a wrapped TS module.
     vec![json!({
         "name": "module",
         "nodes": ir.get("nodes").cloned().unwrap_or(Value::Array(vec![])),
         "edges": ir.get("edges").cloned().unwrap_or(Value::Array(vec![])),
         "errorEdges": ir.get("errorEdges").cloned().unwrap_or(Value::Array(vec![])),
         "entryNodeId": ir.get("entryNodeId").cloned().unwrap_or(Value::Null),
+        "params": [],
     })]
 }
 
 /// Normalize a single function's IR: build a per-function id map and apply
 /// the standard `normalize` transform (strip spans, remap ids, sort keys).
 ///
-/// Strips known function metadata fields (`name`/`params`/`receiver`) before
-/// normalize, ensuring extracted Rust functions and wrapped TS modules compare
-/// equal regardless of function name (e.g. an extracted Rust `main` matches a
-/// TS-wrapped `module` when their graph structure is identical). Only
-/// structural IR fields (`nodes`/`edges`/`errorEdges`/`entryNodeId`)
-/// participate in comparison.
+/// Strips function metadata fields (`name`/`receiver`) before normalize,
+/// ensuring extracted Rust functions and wrapped TS modules compare equal
+/// regardless of function name (e.g. an extracted Rust `main` matches a
+/// TS-wrapped `module` when their graph structure is identical). `params`
+/// is intentionally preserved so typed parameter signatures participate in
+/// structural comparison; null `type` fields within params (and null
+/// `returnType`) are stripped by `normalize` to bridge Rust's
+/// `skip_serializing_if = "Option::is_none"` with TS `JSON.stringify(null)`.
 fn normalize_function(func: &Value) -> Value {
     let id_map = build_id_map(func);
     let mut stripped = func.clone();
     if let Value::Object(map) = &mut stripped {
         map.remove("name");
-        map.remove("params");
         map.remove("receiver");
+        // Note: `params` is NO LONGER stripped — typed params participate in
+        // structural comparison. Null `type` fields within params are stripped
+        // by `normalize` (along with null `returnType`).
     }
     normalize(stripped, &id_map)
 }
@@ -486,5 +497,77 @@ mod tests {
         let (ts_norm, rs_norm) = compare_functions(ts, rs);
         // 元数据被剥离后，两边应 MATCH（expression/hello 场景）
         assert_eq!(ts_norm, rs_norm, "extracted function should match wrapped module after metadata strip");
+    }
+
+    #[test]
+    fn normalize_function_preserves_typed_params() {
+        let func = json!({
+            "name": "process",
+            "params": [
+                {"name": "items", "type": {"kind": "genericInstance", "base": "List", "args": [{"kind": "primitive", "name": "Int"}]}},
+                {"name": "threshold", "type": {"kind": "primitive", "name": "Int"}}
+            ],
+            "nodes": [],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let result = normalize_function(&func);
+        // params 应保持对象数组形态（不被剥离）
+        assert_eq!(result["params"][0]["name"], "items");
+        assert_eq!(result["params"][0]["type"]["kind"], "genericInstance");
+        assert_eq!(result["params"][1]["name"], "threshold");
+        // name 应被剥离
+        assert!(result.get("name").is_none());
+    }
+
+    #[test]
+    fn normalize_strips_null_return_type() {
+        let func = json!({
+            "name": "main",
+            "params": [],
+            "returnType": null,
+            "nodes": [],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let result = normalize_function(&func);
+        // null returnType 应被删除
+        assert!(result.get("returnType").is_none());
+    }
+
+    #[test]
+    fn normalize_strips_null_param_type_field() {
+        let func = json!({
+            "name": "main",
+            "params": [{"name": "x", "type": null}],
+            "nodes": [],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let result = normalize_function(&func);
+        // null type 字段应被删除
+        assert_eq!(result["params"][0]["name"], "x");
+        assert!(result["params"][0].get("type").is_none());
+    }
+
+    #[test]
+    fn normalize_function_compares_typed_params_equal() {
+        let rust_func = json!({
+            "name": "process",
+            "params": [{"name": "items", "type": {"kind": "genericInstance", "base": "List", "args": [{"kind": "primitive", "name": "Int"}]}}],
+            "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let ts_func = json!({
+            "name": "process",
+            "params": [{"name": "items", "type": {"kind": "genericInstance", "base": "List", "args": [{"kind": "primitive", "name": "Int"}]}}],
+            "nodes": [{"id": "entry1", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "entry1"
+        });
+        let r = normalize_function(&rust_func);
+        let t = normalize_function(&ts_func);
+        assert_eq!(r, t, "identical typed params should compare equal after normalization");
     }
 }
