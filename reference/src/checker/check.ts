@@ -21,6 +21,11 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "identifier": {
       if (env.variables[expr.name]) return [env.variables[expr.name]!, diags];
       if (env.receiver?.fields[expr.name]) return [env.receiver.fields[expr.name]!, diags];
+      if (env.structs[expr.name]) return [env.structs[expr.name]!, diags];
+      if (env.functions[expr.name]) {
+        const fn = env.functions[expr.name]!;
+        return [{ kind: "function", params: fn.params.map(p => p.type), returns: fn.returns }, diags];
+      }
       if (["String", "Int", "Bool"].includes(expr.name)) {
         return [{ kind: "primitive", name: expr.name as "String" | "Int" | "Bool" }, diags];
       }
