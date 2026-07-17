@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use crate::ast::*;
 use crate::checker::types::*;
 use crate::checker::env::TypeEnv;
+use crate::checker::unify::{unify, substitute, Substitution};
 use crate::model::TangleDiagnostic;
 
 pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnostic>) {
@@ -106,16 +109,17 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                             span: e.span.clone(),
                         });
                     }
+                    let mut subst: Substitution = HashMap::new();
                     for (i, (arg_ty, param_ty)) in arg_types.iter().zip(&sig.params).enumerate() {
-                        if !types_equal(arg_ty, param_ty) {
+                        if let Err(msg) = unify(param_ty, arg_ty, &mut subst) {
                             diags.push(TangleDiagnostic {
                                 code: "TANGLE_TYPE_ERROR".into(),
-                                message: format!("Arg {} type mismatch", i + 1),
+                                message: format!("Arg {} type mismatch: {}", i + 1, msg),
                                 span: e.span.clone(),
                             });
                         }
                     }
-                    (*sig.returns).clone()
+                    substitute(&sig.returns, &subst)
                 }
                 // Non-function callee (e.g., struct constructor, unknown symbol):
                 // return Any without error to avoid false positives on untyped code.

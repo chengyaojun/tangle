@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use crate::checker::types::{CallableSignature, PrimitiveType, Type};
+use crate::checker::types::{CallableSignature, FunctionType, PrimitiveType, Type, generic, type_var};
 
 // --- type helpers ---
 
@@ -68,41 +68,123 @@ static STDLIB_SIGNATURES: LazyLock<HashMap<&'static str, HashMap<&'static str, C
         ]));
 
         m.insert("List", module(&[
-            ("length", sig_fixed(&[("list", any_t())], int_t())),
-            ("map", sig_fixed(&[("list", any_t()), ("fn", any_t())], any_t())),
-            ("filter", sig_fixed(&[("list", any_t()), ("fn", any_t())], any_t())),
-            ("push", sig_fixed(&[("list", any_t()), ("item", any_t())], any_t())),
-            ("get", sig_fixed(&[("list", any_t()), ("index", int_t())], any_t())),
+            ("length", sig_fixed(&[("list", generic("List", vec![type_var(0)]))], int_t())),
+            ("map", sig_fixed(&[
+                ("list", generic("List", vec![type_var(0)])),
+                ("fn", Type::Function(FunctionType {
+                    params: vec![type_var(0)],
+                    returns: Box::new(type_var(1)),
+                    is_variadic: false,
+                })),
+            ], generic("List", vec![type_var(1)]))),
+            ("filter", sig_fixed(&[
+                ("list", generic("List", vec![type_var(0)])),
+                ("fn", Type::Function(FunctionType {
+                    params: vec![type_var(0)],
+                    returns: Box::new(bool_t()),
+                    is_variadic: false,
+                })),
+            ], generic("List", vec![type_var(0)]))),
+            ("push", sig_fixed(&[
+                ("list", generic("List", vec![type_var(0)])),
+                ("item", type_var(0)),
+            ], generic("List", vec![type_var(0)]))),
+            ("get", sig_fixed(&[
+                ("list", generic("List", vec![type_var(0)])),
+                ("index", int_t()),
+            ], type_var(0))),
         ]));
 
         m.insert("Map", module(&[
-            ("get", sig_fixed(&[("map", any_t()), ("key", any_t())], any_t())),
-            ("set", sig_fixed(&[("map", any_t()), ("key", any_t()), ("value", any_t())], any_t())),
-            ("has", sig_fixed(&[("map", any_t()), ("key", any_t())], bool_t())),
-            ("keys", sig_fixed(&[("map", any_t())], any_t())),
-            ("values", sig_fixed(&[("map", any_t())], any_t())),
-            ("delete", sig_fixed(&[("map", any_t()), ("key", any_t())], any_t())),
+            ("get", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+                ("key", type_var(0)),
+            ], type_var(1))),
+            ("set", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+                ("key", type_var(0)),
+                ("value", type_var(1)),
+            ], generic("Map", vec![type_var(0), type_var(1)]))),
+            ("has", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+                ("key", type_var(0)),
+            ], bool_t())),
+            ("keys", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+            ], generic("List", vec![type_var(0)]))),
+            ("values", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+            ], generic("List", vec![type_var(1)]))),
+            ("delete", sig_fixed(&[
+                ("map", generic("Map", vec![type_var(0), type_var(1)])),
+                ("key", type_var(0)),
+            ], generic("Map", vec![type_var(0), type_var(1)]))),
         ]));
 
         m.insert("Set", module(&[
-            ("add", sig_fixed(&[("set", any_t()), ("value", any_t())], any_t())),
-            ("remove", sig_fixed(&[("set", any_t()), ("value", any_t())], any_t())),
-            ("contains", sig_fixed(&[("set", any_t()), ("value", any_t())], bool_t())),
-            ("size", sig_fixed(&[("set", any_t())], int_t())),
-            ("union", sig_fixed(&[("set", any_t()), ("other", any_t())], any_t())),
-            ("intersection", sig_fixed(&[("set", any_t()), ("other", any_t())], any_t())),
-            ("difference", sig_fixed(&[("set", any_t()), ("other", any_t())], any_t())),
-            ("to_list", sig_fixed(&[("set", any_t())], any_t())),
+            ("add", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("value", type_var(0)),
+            ], generic("Set", vec![type_var(0)]))),
+            ("remove", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("value", type_var(0)),
+            ], generic("Set", vec![type_var(0)]))),
+            ("contains", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("value", type_var(0)),
+            ], bool_t())),
+            ("size", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+            ], int_t())),
+            ("union", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("other", generic("Set", vec![type_var(0)])),
+            ], generic("Set", vec![type_var(0)]))),
+            ("intersection", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("other", generic("Set", vec![type_var(0)])),
+            ], generic("Set", vec![type_var(0)]))),
+            ("difference", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+                ("other", generic("Set", vec![type_var(0)])),
+            ], generic("Set", vec![type_var(0)]))),
+            ("to_list", sig_fixed(&[
+                ("set", generic("Set", vec![type_var(0)])),
+            ], generic("List", vec![type_var(0)]))),
         ]));
 
         m.insert("Option", module(&[
-            ("Some", sig_fixed(&[("value", any_t())], any_t())),
+            ("Some", sig_fixed(&[
+                ("value", type_var(0)),
+            ], generic("Option", vec![type_var(0)]))),
+            // None has no args to infer T from; return Any to avoid unbound type var.
             ("None", sig_fixed(&[], any_t())),
-            ("unwrap", sig_fixed(&[("opt", any_t())], any_t())),
-            ("is_some", sig_fixed(&[("opt", any_t())], bool_t())),
-            ("is_none", sig_fixed(&[("opt", any_t())], bool_t())),
-            ("map", sig_fixed(&[("opt", any_t()), ("fn", any_t())], any_t())),
-            ("or_else", sig_fixed(&[("opt", any_t()), ("fn", any_t())], any_t())),
+            ("unwrap", sig_fixed(&[
+                ("opt", generic("Option", vec![type_var(0)])),
+            ], type_var(0))),
+            ("is_some", sig_fixed(&[
+                ("opt", generic("Option", vec![type_var(0)])),
+            ], bool_t())),
+            ("is_none", sig_fixed(&[
+                ("opt", generic("Option", vec![type_var(0)])),
+            ], bool_t())),
+            ("map", sig_fixed(&[
+                ("opt", generic("Option", vec![type_var(0)])),
+                ("fn", Type::Function(FunctionType {
+                    params: vec![type_var(0)],
+                    returns: Box::new(type_var(1)),
+                    is_variadic: false,
+                })),
+            ], generic("Option", vec![type_var(1)]))),
+            ("or_else", sig_fixed(&[
+                ("opt", generic("Option", vec![type_var(0)])),
+                ("fn", Type::Function(FunctionType {
+                    params: vec![],
+                    returns: Box::new(generic("Option", vec![type_var(0)])),
+                    is_variadic: false,
+                })),
+            ], generic("Option", vec![type_var(0)]))),
         ]));
 
         m.insert("Math", module(&[

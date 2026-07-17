@@ -8,6 +8,7 @@ pub mod propagation;
 pub mod match_check;
 pub mod panic_check;
 pub mod check_module;
+pub mod unify;
 
 pub use types::*;
 pub use builtins::*;
@@ -19,3 +20,4 @@ pub use propagation::*;
 pub use match_check::*;
 pub use panic_check::*;
 pub use check_module::*;
+pub use unify::*;
