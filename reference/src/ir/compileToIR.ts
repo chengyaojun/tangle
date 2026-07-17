@@ -3,6 +3,7 @@ import type { RuleGraph, IRNode, IREdge, IRErrorEdge, IRNodeKind } from "./graph
 import type { TangleDiagnostic, TangleHeading, SourceSpan } from "../model.js";
 import type { Stmt, ParsedCodeBlock } from "../ast.js";
 import type { RuleData } from "../front-end/compileModule.js";
+import type { Type } from "../checker/types.js";
 import { createGraph, freshNodeId } from "./graph.js";
 import { lowerStatements } from "./lower.js";
 import { validateIR } from "./validate.js";
@@ -10,13 +11,25 @@ import { lowerRuleTree } from "./ruleTree.js";
 import { lowerRuleTable } from "./ruleTable.js";
 import { lowerRuleFlow } from "./ruleFlow.js";
 import { lowerRuleToggle } from "./ruleToggle.js";
+import { typeNameToType } from "../checker/resolve.js";
+
+// IRParam: mirror of Rust IRParam. `type` is omitted from JSON when undefined
+// (matching Rust's #[serde(skip_serializing_if = "Option::is_none")]).
+// `type?: Type | undefined` is needed because tsconfig enables
+// `exactOptionalPropertyTypes: true`, which forbids assigning `undefined`
+// to a purely optional field.
+type IRParam = {
+  name: string;
+  type?: Type | undefined;
+};
 
 // IRFunction: mirror of Rust IRFunction (camelCase JSON serialization).
 // Carries heading-defined function IR (multi-function mode).
 type IRFunction = {
   name: string;
   receiver: string | null;
-  params: string[];
+  params: IRParam[];
+  returnType?: Type | undefined;
   nodes: IRNode[];
   edges: IREdge[];
   entryNodeId: string;
@@ -218,10 +231,13 @@ function collectFunctions(
       const receiver = name !== "main"
         ? (parent !== null && parent.role === "type" ? (parent.symbolName ?? parent.title) : null)
         : null;
-      const params = (h.params ?? []).map(p => p.name);
+      const params = (h.params ?? []).map(p => ({
+        name: p.name,
+        type: p.typeName ? typeNameToType(p.typeName) : undefined,
+      }));
       const blocks = parsedBlocks.filter(b => b.headingId === h.id);
       const { nodes, edges, entryNodeId, errorEdges } = lowerFunctionBody(blocks);
-      out.push({ name, receiver, params, nodes, edges, entryNodeId, errorEdges });
+      out.push({ name, receiver, params, returnType: undefined, nodes, edges, entryNodeId, errorEdges });
     }
     collectFunctions(h.children, h, parsedBlocks, out);
   }

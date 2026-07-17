@@ -139,3 +139,17 @@ export function typeExprToType(te: TypeExpr): Type {
       };
   }
 }
+
+/**
+ * 解析类型注解字符串为 Type。解析失败返回 undefined。
+ * 镜像 Rust checker::resolve::type_name_to_type。
+ */
+export function typeNameToType(name: string): Type | undefined {
+  try {
+    const te = parseTypeExpr(name, "");
+    if (!te) return undefined;
+    return typeExprToType(te);
+  } catch {
+    return undefined;
+  }
+}
