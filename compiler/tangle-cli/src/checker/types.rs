@@ -23,6 +23,7 @@ pub struct PrimitiveType {
 pub struct StructType {
     pub name: String,
     pub fields: HashMap<String, Type>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub methods: HashMap<String, CallableSignature>,
 }
 
@@ -41,13 +42,14 @@ pub struct GenericTypeInstance {
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub returns: Box<Type>,
-    #[serde(default, rename = "isVariadic")]
+    #[serde(skip_serializing)]
     pub is_variadic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InterfaceType {
     pub name: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub methods: HashMap<String, CallableSignature>,
 }
 
@@ -60,8 +62,12 @@ pub struct TypeVariable {
 pub struct CallableSignature {
     pub params: Vec<(String, Type)>,
     pub returns: Type,
-    #[serde(default, rename = "isVariadic")]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub is_variadic: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
 /// 构造类型变量
@@ -411,5 +417,40 @@ mod serde_tests {
         let json = serde_json::to_string(&ty).unwrap();
         let back: Type = serde_json::from_str(&json).unwrap();
         assert_eq!(ty, back);
+    }
+
+    #[test]
+    fn test_struct_omits_empty_methods() {
+        let ty = Type::Struct(StructType {
+            name: "Order".into(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "struct");
+        assert_eq!(json["name"], "Order");
+        assert!(
+            json.get("methods").is_none(),
+            "empty methods should be omitted"
+        );
+    }
+
+    #[test]
+    fn test_function_omits_is_variadic() {
+        let ty = Type::Function(FunctionType {
+            params: vec![],
+            returns: Box::new(Type::Any),
+            is_variadic: true,
+        });
+        let json = serde_json::to_value(&ty).unwrap();
+        assert_eq!(json["kind"], "function");
+        assert!(
+            json.get("isVariadic").is_none(),
+            "isVariadic should be skipped"
+        );
+        assert!(
+            json.get("is_variadic").is_none(),
+            "is_variadic should be skipped"
+        );
     }
 }
