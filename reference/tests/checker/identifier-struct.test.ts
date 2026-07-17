@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { checkExpression } from "../../src/checker/check.js";
 import { createEnv } from "../../src/checker/env.js";
-import type { StructType } from "../../src/checker/types.js";
+import type { StructType, CallableSignature } from "../../src/checker/types.js";
 
 describe("identifier resolves struct", () => {
   it("returns struct type when identifier matches env.structs", () => {
@@ -33,5 +33,28 @@ describe("identifier resolves struct", () => {
       env
     );
     expect(diags.some(d => d.code === "TANGLE_TYPE_UNDEFINED_VARIABLE")).toBe(true);
+  });
+});
+
+describe("identifier resolves function", () => {
+  it("returns function type when identifier matches env.functions", () => {
+    const env = createEnv();
+    const sig: CallableSignature = {
+      params: [{ name: "x", type: { kind: "primitive", name: "Int" } }],
+      returns: { kind: "primitive", name: "Bool" },
+    };
+    env.functions["isPositive"] = sig;
+
+    const [type, diags] = checkExpression(
+      { kind: "identifier", name: "isPositive", span: { file: "test.tangle", startLine: 1, startColumn: 1, endLine: 1, endColumn: 11 } },
+      env
+    );
+
+    expect(diags).toHaveLength(0);
+    expect(type.kind).toBe("function");
+    if (type.kind === "function") {
+      expect(type.params).toEqual([{ kind: "primitive", name: "Int" }]);
+      expect(type.returns).toEqual({ kind: "primitive", name: "Bool" });
+    }
   });
 });
