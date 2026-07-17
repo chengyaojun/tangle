@@ -60,6 +60,19 @@ pub struct CallableSignature {
     pub is_variadic: bool,
 }
 
+/// 构造类型变量
+pub fn type_var(id: usize) -> Type {
+    Type::Var(TypeVariable { id })
+}
+
+/// 构造泛型实例
+pub fn generic(base: &str, args: Vec<Type>) -> Type {
+    Type::GenericInstance(GenericTypeInstance {
+        base: base.to_string(),
+        args,
+    })
+}
+
 pub fn types_equal(a: &Type, b: &Type) -> bool {
     if matches!(a, Type::Any) || matches!(b, Type::Any) {
         return true;
@@ -305,5 +318,25 @@ mod tests {
         };
         assert!(!fixed.is_variadic);
         assert!(variadic.is_variadic);
+    }
+
+    // --- 10. type_var and generic constructors ---
+
+    #[test]
+    fn type_var_constructor() {
+        let v = type_var(0);
+        assert!(matches!(v, Type::Var(TypeVariable { id: 0 })));
+    }
+
+    #[test]
+    fn generic_constructor() {
+        let list_int = generic("List", vec![prim("Int")]);
+        match list_int {
+            Type::GenericInstance(g) => {
+                assert_eq!(g.base, "List");
+                assert_eq!(g.args.len(), 1);
+            }
+            _ => panic!("Expected GenericInstance"),
+        }
     }
 }
