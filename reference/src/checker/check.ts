@@ -3,6 +3,7 @@ import type { TangleDiagnostic } from "../model.js";
 import type { Type, StructType } from "./types.js";
 import type { TypeEnv } from "./env.js";
 import { typesEqual } from "./types.js";
+import { unify, substitute, type Substitution } from "./unify.js";
 import { checkMatchExhaustiveness } from "./match.js";
 
 export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnostic[]] {
@@ -21,6 +22,11 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "identifier": {
       if (env.variables[expr.name]) return [env.variables[expr.name]!, diags];
       if (env.receiver?.fields[expr.name]) return [env.receiver.fields[expr.name]!, diags];
+      if (env.structs[expr.name]) return [env.structs[expr.name]!, diags];
+      if (env.functions[expr.name]) {
+        const fn = env.functions[expr.name]!;
+        return [{ kind: "function", params: fn.params.map(p => p.type), returns: fn.returns }, diags];
+      }
       if (["String", "Int", "Bool"].includes(expr.name)) {
         return [{ kind: "primitive", name: expr.name as "String" | "Int" | "Bool" }, diags];
       }
@@ -40,6 +46,9 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "memberAccess": {
       const [objType, objDiags] = checkExpression(expr.object, env);
       diags.push(...objDiags);
+      if (objType.kind === "any") {
+        return [{ kind: "any" }, diags];
+      }
       if (objType.kind === "struct" || objType.kind === "interface") {
         if (objType.kind === "struct" && objType.fields[expr.member]) {
           return [objType.fields[expr.member]!, diags];
@@ -56,14 +65,27 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "call": {
       const [calleeType, calleeDiags] = checkExpression(expr.callee, env);
       diags.push(...calleeDiags);
+      const argTypes: Type[] = [];
       for (const arg of expr.args) {
-        const [, argDiags] = checkExpression(arg, env);
+        const [argType, argDiags] = checkExpression(arg, env);
         diags.push(...argDiags);
+        argTypes.push(argType);
       }
       if (calleeType.kind === "function") {
-        return [calleeType.returns, diags];
+        // 泛型推导：unify 参数类型，substitute 返回类型
+        const subst: Substitution = new Map();
+        for (let i = 0; i < calleeType.params.length && i < argTypes.length; i++) {
+          const err = unify(calleeType.params[i]!, argTypes[i]!, subst);
+          if (err) {
+            diags.push({ code: "TANGLE_TYPE_ERROR", message: `Arg ${i + 1} type mismatch: ${err}`, span: expr.span });
+          }
+        }
+        return [substitute(calleeType.returns, subst), diags];
       }
-      return [{ kind: "primitive", name: "Bool" }, diags];
+      if (calleeType.kind === "struct") {
+        return [calleeType, diags];
+      }
+      return [{ kind: "any" }, diags];
     }
 
     case "binary": {
@@ -88,6 +110,9 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "recordUpdate": {
       const [objType, objDiags] = checkExpression(expr.object, env);
       diags.push(...objDiags);
+      if (objType.kind === "any") {
+        return [{ kind: "any" }, diags];
+      }
       if (objType.kind === "struct") {
         for (const field of expr.fields) {
           if (!(field.name in objType.fields)) {

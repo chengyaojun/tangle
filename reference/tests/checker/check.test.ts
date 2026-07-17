@@ -4,7 +4,7 @@ import type { TypeEnv } from "../../src/index";
 import { tokenize, parseExpression } from "../../src/index";
 
 function makeEnv(overrides?: Partial<TypeEnv>): TypeEnv {
-  return { variables: {}, structs: {}, interfaces: {}, ...overrides };
+  return { variables: {}, structs: {}, interfaces: {}, functions: {}, ...overrides };
 }
 
 describe("checkExpression", () => {

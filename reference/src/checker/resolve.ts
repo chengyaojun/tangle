@@ -111,10 +111,10 @@ function buildCallableSignature(heading: TangleHeading): CallableSignature {
     }
     params.push({ name: param.name, type });
   }
-  return { params, returns: { kind: "primitive", name: "Bool" } };
+  return { params, returns: { kind: "any" } };
 }
 
-function typeExprToType(te: TypeExpr): Type {
+export function typeExprToType(te: TypeExpr): Type {
   switch (te.kind) {
     case "primitiveType": {
       const builtin = builtinTypes[te.name];

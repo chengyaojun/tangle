@@ -3,10 +3,12 @@ import type { ParsedCodeBlock } from "../ast.js";
 import type { TypeEnv } from "./env.js";
 import { tokenize } from "../parser/lexer.js";
 import { parseCodeBody } from "../parser/parser.js";
-import { resolveTypes, findReceiverHeading } from "./resolve.js";
+import { resolveTypes, findReceiverHeading, typeExprToType } from "./resolve.js";
 import { checkExpression } from "./check.js";
 import { createEnv } from "./env.js";
 import { ErrorRegistry } from "./errors.js";
+import { parseTypeExpr } from "../parser/typeParser.js";
+import { registerBuiltins } from "./builtins.js";
 
 export type CheckedModule = TangleModule & {
   parsedBlocks: ParsedCodeBlock[];
@@ -47,6 +49,7 @@ export function checkModule(module: TangleModule): CheckedModule {
     const checkEnv = createEnv();
     checkEnv.structs = env.structs;
     checkEnv.interfaces = env.interfaces;
+    registerBuiltins(checkEnv);
     // Attach errorRegistry to env for propagation checking
     checkEnv.errorRegistry = errorRegistry;
 
@@ -57,10 +60,24 @@ export function checkModule(module: TangleModule): CheckedModule {
       }
     }
 
-    // Add method params as variables
+    // Add method params as variables (resolve type from typeName annotation)
     for (const param of heading.params ?? []) {
-      // Use default type for params without type annotations
-      checkEnv.variables[param.name] = { kind: "primitive", name: "String" };
+      if (param.typeName) {
+        try {
+          const te = parseTypeExpr(param.typeName, param.span.file);
+          let paramType = typeExprToType(te);
+          // If it's a struct name, look up full definition from env (with fields/methods)
+          if (paramType.kind === "struct") {
+            const fullStruct = env.structs[paramType.name];
+            if (fullStruct) paramType = fullStruct;
+          }
+          checkEnv.variables[param.name] = paramType;
+        } catch {
+          checkEnv.variables[param.name] = { kind: "any" };
+        }
+      } else {
+        checkEnv.variables[param.name] = { kind: "any" };
+      }
     }
 
     for (const stmt of parsed.body.statements) {
