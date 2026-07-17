@@ -79,3 +79,13 @@ export function isSubtype(value: Type, target: Type): boolean {
   }
   return typesEqual(value, target);
 }
+
+/// 构造类型变量
+export function typeVar(id: number): Type {
+  return { kind: "var", id };
+}
+
+/// 构造泛型实例
+export function generic(base: string, args: Type[]): Type {
+  return { kind: "genericInstance", base, args };
+}
