@@ -123,3 +123,24 @@ fn test_py_emitter_generates_type_annotations() {
         py
     );
 }
+
+#[test]
+fn test_go_emitter_generates_type_annotations() {
+    use tangle_cli::codegen::go_emitter::emit_go;
+
+    let path = fixture_path("v06_phase6", "generics.tangle.md");
+    let (graph, _diags) = run_collecting_ir(&path);
+    let go = emit_go(&graph, "generics");
+
+    // process 函数应有类型注解 + Result 返回类型
+    assert!(go.contains("func process(items []int, threshold int) Result {"),
+        "Go output should contain typed signature, got:\n{}", go);
+
+    // main 函数无参数，mainImpl 包装为 Result 返回类型
+    assert!(go.contains("func mainImpl() Result {"),
+        "Go output should contain mainImpl wrapper, got:\n{}", go);
+
+    // func main() 入口无返回类型（Go 语言要求）
+    assert!(go.contains("func main() {"),
+        "Go output should contain func main entry, got:\n{}", go);
+}

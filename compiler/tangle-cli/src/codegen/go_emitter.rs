@@ -1,3 +1,4 @@
+use crate::codegen::type_map::tangle_type_to_go;
 use crate::ir::graph::*;
 use std::collections::{HashSet, VecDeque};
 
@@ -246,6 +247,15 @@ fn emit_single_function_go(
     out
 }
 
+/// Format a parameter for Go: `name type`. Untyped params (type_ is None)
+/// get `any` as their Go type. Typed params use tangle_type_to_go mapping.
+fn format_go_param(p: &IRParam) -> String {
+    match &p.type_ {
+        Some(ty) => format!("{} {}", p.name, tangle_type_to_go(ty)),
+        None => format!("{} any", p.name),
+    }
+}
+
 /// Multi-function emission: one Go function per heading-defined callable.
 /// Non-main functions get a `Result` return type so their body's
 /// `return Ok(nil)` / `return Err(...)` statements compile. The `main`
@@ -256,11 +266,14 @@ fn emit_multi_function_go(functions: &[IRFunction]) -> String {
     let mut out = String::new();
     for func in functions {
         let name = &func.name;
-        // params are currently empty (IRFunction.params will be expanded in a future phase)
+        let params_str = func.params.iter().map(format_go_param).collect::<Vec<_>>().join(", ");
+        // 返回类型：return_type 为 None 时用 Result（现有约定），Phase 6c 实现返回推导后可覆盖
+        let ret_ty = func.return_type.as_ref().map(tangle_type_to_go).unwrap_or_else(|| "Result".into());
         if name == "main" {
             // Wrap main as mainImpl() Result so its `return Ok/Err` statements
             // compile; `func main()` itself cannot declare a return type.
-            out.push_str("func mainImpl() Result {\n");
+            // mainImpl 不带 params（main 的 params 通常是空的，且 main 是入口不应暴露 params）
+            out.push_str(&format!("func mainImpl() {} {{\n", ret_ty));
             out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
             out.push_str("}\n\n");
             out.push_str("func main() {\n");
@@ -272,7 +285,7 @@ fn emit_multi_function_go(functions: &[IRFunction]) -> String {
             out.push_str("    fmt.Println(result.Value)\n");
             out.push_str("}\n");
         } else {
-            out.push_str(&format!("func {}() Result {{\n", name));
+            out.push_str(&format!("func {}({}) {} {{\n", name, params_str, ret_ty));
             out.push_str(&emit_go_function_body(&func.nodes, &func.edges, &func.entry_node_id));
             out.push_str("}\n\n");
         }
