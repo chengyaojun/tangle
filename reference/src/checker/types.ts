@@ -5,11 +5,16 @@ export type Type =
   | GenericTypeInstance
   | FunctionType_
   | InterfaceType
-  | TypeVariable;
+  | TypeVariable
+  | AnyType;
 
 export type PrimitiveType = {
   kind: "primitive";
   name: "String" | "Int" | "Bool";
+};
+
+export type AnyType = {
+  kind: "any";
 };
 
 export type StructType = {
@@ -53,6 +58,7 @@ export type CallableSignature = {
 };
 
 export function typesEqual(a: Type, b: Type): boolean {
+  if (a.kind === "any" || b.kind === "any") return true;
   if (a.kind !== b.kind) return false;
   if (a.kind === "primitive" && b.kind === "primitive") return a.name === b.name;
   if (a.kind === "struct" && b.kind === "struct") return a.name === b.name;
