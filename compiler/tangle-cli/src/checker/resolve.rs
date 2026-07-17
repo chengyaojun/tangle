@@ -1,6 +1,10 @@
+use crate::ast::{
+    FunctionTypeExpr, GenericTypeExpr, NamedTypeExpr, PrimitiveTypeExpr, SumTypeExpr, TypeExpr,
+};
 use crate::checker::env::TypeEnv;
 use crate::checker::types::*;
 use crate::model::{HeadingRole, TangleDiagnostic, TangleHeading, TangleModule};
+use crate::parser::type_parser::parse_type_expr;
 use std::collections::HashMap;
 
 pub fn resolve_types(module: &TangleModule) -> (TypeEnv, Vec<TangleDiagnostic>) {
@@ -121,21 +125,49 @@ fn collect_method_sigs(children: &[TangleHeading]) -> HashMap<String, CallableSi
     methods
 }
 
-fn type_name_to_type(name: &str) -> Option<Type> {
-    match name {
-        "String" => Some(Type::Primitive(PrimitiveType {
-            name: "String".into(),
-        })),
-        "Int" => Some(Type::Primitive(PrimitiveType {
-            name: "Int".into(),
-        })),
-        "Bool" => Some(Type::Primitive(PrimitiveType {
-            name: "Bool".into(),
-        })),
-        _ => Some(Type::Primitive(PrimitiveType {
-            name: name.into(),
-        })),
+/// 将 TypeExpr（语法树）转换为 Type（语义类型）。
+/// 镜像 TS 端 reference/src/checker/resolve.ts:typeExprToType。
+pub fn type_expr_to_type(te: &TypeExpr) -> Type {
+    match te {
+        TypeExpr::Primitive(PrimitiveTypeExpr { name, .. }) => {
+            Type::Primitive(PrimitiveType { name: name.clone() })
+        }
+        TypeExpr::Named(NamedTypeExpr { name, .. }) => {
+            // 用户定义类型名 → Struct（字段/方法在 resolve_types 中填充）
+            Type::Struct(StructType {
+                name: name.clone(),
+                fields: HashMap::new(),
+                methods: HashMap::new(),
+            })
+        }
+        TypeExpr::Sum(SumTypeExpr { variants, .. }) => Type::Sum(SumType {
+            variants: variants.iter().map(type_expr_to_type).collect(),
+        }),
+        TypeExpr::Generic(GenericTypeExpr {
+            base, type_args, ..
+        }) => Type::GenericInstance(GenericTypeInstance {
+            base: base.clone(),
+            args: type_args.iter().map(type_expr_to_type).collect(),
+        }),
+        TypeExpr::Function(FunctionTypeExpr { params, returns, .. }) => {
+            Type::Function(FunctionType {
+                params: params.iter().map(type_expr_to_type).collect(),
+                returns: Box::new(type_expr_to_type(returns)),
+                is_variadic: false,
+            })
+        }
     }
+}
+
+/// 解析 Tangle 类型注解字符串（如 "List<Int>"、"Order"、"String"）为 Type。
+/// 使用 type_parser 解析泛型语法，解析失败返回 None。
+/// 调用方（resolve_types）用 .unwrap_or(Type::Any) 处理 None。
+pub fn type_name_to_type(name: &str) -> Option<Type> {
+    let (te, diags) = parse_type_expr(name, "");
+    if !diags.is_empty() {
+        return None;
+    }
+    te.map(|te| type_expr_to_type(&te))
 }
 
 /// Find parent type heading for a given heading id (implicit this binding)
@@ -184,4 +216,62 @@ fn is_child_of_type_heading(heading_id: &str, headings: &[TangleHeading]) -> boo
         }
     }
     false
+}
+
+#[cfg(test)]
+mod type_name_tests {
+    use super::*;
+
+    #[test]
+    fn test_basic_types() {
+        assert!(matches!(type_name_to_type("Int").unwrap(), Type::Primitive(_)));
+        assert!(matches!(type_name_to_type("String").unwrap(), Type::Primitive(_)));
+        assert!(matches!(type_name_to_type("Bool").unwrap(), Type::Primitive(_)));
+    }
+
+    #[test]
+    fn test_generic_list() {
+        let ty = type_name_to_type("List<Int>").unwrap();
+        match ty {
+            Type::GenericInstance(g) => {
+                assert_eq!(g.base, "List");
+                assert_eq!(g.args.len(), 1);
+                match &g.args[0] {
+                    Type::Primitive(p) => assert_eq!(p.name, "Int"),
+                    other => panic!("expected Primitive, got {:?}", other),
+                }
+            }
+            other => panic!("expected GenericInstance, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_generic_map_two_args() {
+        let ty = type_name_to_type("Map<String, Int>").unwrap();
+        match ty {
+            Type::GenericInstance(g) => {
+                assert_eq!(g.base, "Map");
+                assert_eq!(g.args.len(), 2);
+            }
+            other => panic!("expected GenericInstance, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_named_type_becomes_struct() {
+        let ty = type_name_to_type("Order").unwrap();
+        assert!(matches!(ty, Type::Struct(_)));
+    }
+
+    #[test]
+    fn test_option_nested() {
+        let ty = type_name_to_type("Option<String>").unwrap();
+        match ty {
+            Type::GenericInstance(g) => {
+                assert_eq!(g.base, "Option");
+                assert_eq!(g.args.len(), 1);
+            }
+            other => panic!("expected GenericInstance, got {:?}", other),
+        }
+    }
 }
