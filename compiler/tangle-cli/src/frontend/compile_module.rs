@@ -201,6 +201,11 @@ fn plain_text_recursive(node: &crate::markdown::MarkdownNode) -> String {
             return format!("`{}`", v);
         }
     }
+    if node.node_type == "html" {
+        // Preserve inline HTML (e.g. `<Int>` in `List<Int>`) so type
+        // annotations in parameter descriptions survive text extraction.
+        return node.value.clone().unwrap_or_default();
+    }
     node.children.iter().map(plain_text_recursive).collect::<Vec<_>>().join(" ")
 }
 

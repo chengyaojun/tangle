@@ -100,6 +100,10 @@ path = "tests/v05_phase5/toggle_cross_block.rs"
 name = "phase6_generics_inference"
 path = "tests/v06_phase6/generics_inference.rs"
 
+[[test]]
+name = "phase6_ir_param_types"
+path = "tests/v06_phase6/ir_param_types.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }

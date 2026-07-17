@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::checker::types::Type;
 use crate::model::SourceSpan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +78,16 @@ pub struct RuleGraph {
     pub functions: Vec<IRFunction>,
 }
 
+/// IR 参数：name + 可选类型（来自 Tangle 源码注解 `param: TypeName`）。
+/// `type_` 序列化为 JSON `"type"`（`type` 是 Rust 关键字，故字段名加下划线）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IRParam {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "type")]
+    pub type_: Option<Type>,
+}
+
 /// A heading-defined function (e.g. `#### main`, `#### create` under `### Order`).
 /// `receiver` is `Some("Order")` for methods like `Order.create`; `None` for free
 /// functions like `main` / `process`.
@@ -85,7 +96,9 @@ pub struct RuleGraph {
 pub struct IRFunction {
     pub name: String,
     pub receiver: Option<String>,
-    pub params: Vec<String>,
+    pub params: Vec<IRParam>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_type: Option<Type>,
     pub nodes: Vec<IRNode>,
     pub edges: Vec<IREdge>,
     pub entry_node_id: String,
@@ -181,5 +194,50 @@ mod tests {
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("\"group\":\"G1\""));
         assert!(!json.contains("\"style\""));
+    }
+}
+
+#[cfg(test)]
+mod ir_param_tests {
+    use super::*;
+    use crate::checker::types::{GenericTypeInstance, PrimitiveType, Type};
+
+    #[test]
+    fn test_ir_param_without_type_omits_field() {
+        let p = IRParam { name: "x".into(), type_: None };
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["name"], "x");
+        assert!(json.get("type").is_none(), "type field should be omitted when None");
+    }
+
+    #[test]
+    fn test_ir_param_with_type() {
+        let p = IRParam {
+            name: "items".into(),
+            type_: Some(Type::GenericInstance(GenericTypeInstance {
+                base: "List".into(),
+                args: vec![Type::Primitive(PrimitiveType { name: "Int".into() })],
+            })),
+        };
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["name"], "items");
+        assert_eq!(json["type"]["kind"], "genericInstance");
+        assert_eq!(json["type"]["base"], "List");
+    }
+
+    #[test]
+    fn test_ir_function_return_type_omitted_when_none() {
+        let f = IRFunction {
+            name: "main".into(),
+            receiver: None,
+            params: vec![],
+            return_type: None,
+            nodes: vec![],
+            edges: vec![],
+            entry_node_id: "n0".into(),
+            error_edges: vec![],
+        };
+        let json = serde_json::to_value(&f).unwrap();
+        assert!(json.get("returnType").is_none());
     }
 }

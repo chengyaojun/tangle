@@ -516,7 +516,7 @@ fn emit_multi_function_js(functions: &[IRFunction]) -> String {
     }
 
     for f in functions {
-        let params = f.params.join(", ");
+        let params = f.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ");
         match &f.receiver {
             Some(r) => out.push_str(&format!("{}.{} = function({}) {{\n", r, f.name, params)),
             None => out.push_str(&format!("function {}({}) {{\n", f.name, params)),

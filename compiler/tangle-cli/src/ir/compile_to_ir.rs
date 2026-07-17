@@ -1,5 +1,6 @@
 use crate::ast::{ParsedCodeBlock, Stmt};
 use crate::checker::check_module::CheckedModule;
+use crate::checker::resolve::type_name_to_type;
 use crate::ir::graph::*;
 use crate::ir::lower::lower_statements;
 use crate::ir::lower::stmt_source;
@@ -143,7 +144,10 @@ fn collect_functions(
                 } else {
                     None
                 };
-                let params: Vec<String> = h.params.iter().map(|p| p.name.clone()).collect();
+                let params: Vec<IRParam> = h.params.iter().map(|p| IRParam {
+                    name: p.name.clone(),
+                    type_: p.type_name.as_ref().and_then(|tn| type_name_to_type(tn)),
+                }).collect();
                 let blocks: Vec<&ParsedCodeBlock> = parsed_blocks.iter()
                     .filter(|b| b.heading_id == h.id)
                     .collect();
@@ -152,6 +156,7 @@ fn collect_functions(
                     name: name.clone(),
                     receiver,
                     params,
+                    return_type: None,
                     nodes,
                     edges,
                     entry_node_id: entry_id,
