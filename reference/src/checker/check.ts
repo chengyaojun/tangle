@@ -45,6 +45,9 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "memberAccess": {
       const [objType, objDiags] = checkExpression(expr.object, env);
       diags.push(...objDiags);
+      if (objType.kind === "any") {
+        return [{ kind: "any" }, diags];
+      }
       if (objType.kind === "struct" || objType.kind === "interface") {
         if (objType.kind === "struct" && objType.fields[expr.member]) {
           return [objType.fields[expr.member]!, diags];
@@ -96,6 +99,9 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "recordUpdate": {
       const [objType, objDiags] = checkExpression(expr.object, env);
       diags.push(...objDiags);
+      if (objType.kind === "any") {
+        return [{ kind: "any" }, diags];
+      }
       if (objType.kind === "struct") {
         for (const field of expr.fields) {
           if (!(field.name in objType.fields)) {
