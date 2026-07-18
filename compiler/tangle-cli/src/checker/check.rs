@@ -202,10 +202,13 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             let (then_ty, mut then_diags) = check_expression(&e.then_branch, env);
             diags.append(&mut then_diags);
             if let Some(ref else_branch) = e.else_branch {
-                let (_else_ty, mut else_diags) = check_expression(else_branch, env);
+                let (else_ty, mut else_diags) = check_expression(else_branch, env);
                 diags.append(&mut else_diags);
+                crate::checker::unify::unify_pair(&then_ty, &else_ty)
+                    .unwrap_or_else(|| then_ty.clone())
+            } else {
+                then_ty
             }
-            then_ty
         }
         Expr::Arrow(_e) => {
             Type::Function(FunctionType {
@@ -273,4 +276,77 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
         }
     };
     (ty, diags)
+}
+
+#[cfg(test)]
+mod if_expr_tests {
+    use super::*;
+    use crate::model::SourceSpan;
+
+    fn span() -> SourceSpan {
+        SourceSpan { file: "".into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 }
+    }
+
+    fn num_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "0".to_string(), span: span() })
+    }
+
+    fn str_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::String, value: "".to_string(), span: span() })
+    }
+
+    fn bool_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Boolean, value: "true".to_string(), span: span() })
+    }
+
+    fn if_expr(then: Expr, else_: Option<Expr>) -> Expr {
+        Expr::If(IfExpr {
+            condition: Box::new(bool_expr()),
+            then_branch: Box::new(then),
+            else_branch: else_.map(Box::new),
+            span: span(),
+        })
+    }
+
+    fn empty_env() -> TypeEnv {
+        TypeEnv {
+            variables: std::collections::HashMap::new(),
+            structs: std::collections::HashMap::new(),
+            functions: std::collections::HashMap::new(),
+            interfaces: std::collections::HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    #[test]
+    fn if_without_else_returns_then_type() {
+        let env = empty_env();
+        let (ty, _) = check_expression(&if_expr(num_expr(), None), &env);
+        match ty {
+            Type::Primitive(p) => assert_eq!(p.name, "Int"),
+            other => panic!("expected Int, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn if_with_same_then_else_returns_type() {
+        let env = empty_env();
+        let (ty, _) = check_expression(&if_expr(num_expr(), Some(num_expr())), &env);
+        match ty {
+            Type::Primitive(p) => assert_eq!(p.name, "Int"),
+            other => panic!("expected Int, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn if_with_conflict_then_else_returns_then_type() {
+        // 冲突时回退到 then 类型（best-effort）
+        let env = empty_env();
+        let (ty, _) = check_expression(&if_expr(num_expr(), Some(str_expr())), &env);
+        match ty {
+            Type::Primitive(p) => assert_eq!(p.name, "Int"),
+            other => panic!("expected Int (then fallback), got {:?}", other),
+        }
+    }
 }
