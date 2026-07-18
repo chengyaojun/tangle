@@ -77,6 +77,7 @@ impl<'a> ParserState<'a> {
             Expr::Match(e) => e.span.clone(),
             Expr::Destructure(e) => e.span.clone(),
             Expr::Panic(e) => e.span.clone(),
+            Expr::Is(e) => e.span.clone(),
         }
     }
 

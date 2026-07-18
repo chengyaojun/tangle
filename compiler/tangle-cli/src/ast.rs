@@ -1,7 +1,7 @@
 use crate::model::SourceSpan;
 
 // ============================================================
-// 表达式 (15 variants)
+// 表达式 (16 variants)
 // ============================================================
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +21,7 @@ pub enum Expr {
     Match(MatchExpr),
     Destructure(DestructureExpr),
     Panic(PanicExpr),
+    Is(IsExpr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,8 +174,27 @@ pub struct PanicExpr {
     pub span: SourceSpan,
 }
 
+/// Pattern 子树：用于 `is` 表达式与 refutable let。
+/// Phase 6d 仅支持 variant 形式；复合模式（And/Guard）推迟到 6e。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    /// `is Some` —— 仅测试 variant 名，无 binding
+    Variant { name: String },
+    /// `is Some(y)` —— 测试 variant 名并绑定 payload
+    VariantBinding { name: String, binding: String },
+}
+
+/// 类型测试表达式: `x is Pattern`
+/// 返回 Bool；在 then 分支中通过 narrow_env_for_is 注入 binding 类型
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsExpr {
+    pub expr: Box<Expr>,
+    pub pattern: Pattern,
+    pub span: SourceSpan,
+}
+
 // ============================================================
-// 语句 (4 variants)
+// 语句 (6 variants)
 // ============================================================
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,6 +203,8 @@ pub enum Stmt {
     Let(LetStmt),
     Const(ConstStmt),
     Expression(ExpressionStmt),
+    LetVariant(LetVariantStmt),
+    LetRecord(LetRecordStmt),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -210,6 +232,24 @@ pub struct ConstStmt {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpressionStmt {
     pub expr: Expr,
+    pub span: SourceSpan,
+}
+
+/// Refutable 变体解构: `let Some(y) = expr else { ... }`
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetVariantStmt {
+    pub variant_name: String,
+    pub binding: Option<String>,
+    pub expr: Box<Expr>,
+    pub else_branch: Vec<Stmt>,
+    pub span: SourceSpan,
+}
+
+/// 不可反驳的 Record 解构: `let { ok, err } = expr`
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetRecordStmt {
+    pub fields: Vec<(String, String)>,
+    pub expr: Box<Expr>,
     pub span: SourceSpan,
 }
 
@@ -359,5 +399,95 @@ mod tests {
         let inner = Expr::Identifier(IdentifierExpr { name: "f".into(), span: test_span() });
         let e = Expr::Propagation(PropagationExpr { expr: Box::new(inner), span: test_span() });
         assert!(matches!(e, Expr::Propagation(_)));
+    }
+}
+
+#[cfg(test)]
+mod phase6d_ast_tests {
+    use super::*;
+    use crate::model::SourceSpan;
+
+    fn dummy_span() -> SourceSpan {
+        SourceSpan {
+            file: "t.md".into(),
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 5,
+        }
+    }
+
+    #[test]
+    fn pattern_variant_construction() {
+        let p = Pattern::Variant { name: "Some".to_string() };
+        match p {
+            Pattern::Variant { name } => assert_eq!(name, "Some"),
+            _ => panic!("expected Variant"),
+        }
+    }
+
+    #[test]
+    fn pattern_variant_binding_construction() {
+        let p = Pattern::VariantBinding {
+            name: "Some".to_string(),
+            binding: "y".to_string(),
+        };
+        match p {
+            Pattern::VariantBinding { name, binding } => {
+                assert_eq!(name, "Some");
+                assert_eq!(binding, "y");
+            }
+            _ => panic!("expected VariantBinding"),
+        }
+    }
+
+    #[test]
+    fn is_expr_construction() {
+        let e = IsExpr {
+            expr: Box::new(Expr::Identifier(IdentifierExpr {
+                name: "x".to_string(),
+                span: dummy_span(),
+            })),
+            pattern: Pattern::VariantBinding {
+                name: "Some".to_string(),
+                binding: "y".to_string(),
+            },
+            span: dummy_span(),
+        };
+        assert!(matches!(e.pattern, Pattern::VariantBinding { .. }));
+    }
+
+    #[test]
+    fn let_variant_stmt_construction() {
+        let s = LetVariantStmt {
+            variant_name: "Some".to_string(),
+            binding: Some("y".to_string()),
+            expr: Box::new(Expr::Identifier(IdentifierExpr {
+                name: "x".to_string(),
+                span: dummy_span(),
+            })),
+            else_branch: vec![],
+            span: dummy_span(),
+        };
+        assert_eq!(s.variant_name, "Some");
+        assert_eq!(s.binding, Some("y".to_string()));
+    }
+
+    #[test]
+    fn let_record_stmt_construction() {
+        let s = LetRecordStmt {
+            fields: vec![
+                ("ok".to_string(), "o".to_string()),
+                ("err".to_string(), "e".to_string()),
+            ],
+            expr: Box::new(Expr::Identifier(IdentifierExpr {
+                name: "r".to_string(),
+                span: dummy_span(),
+            })),
+            span: dummy_span(),
+        };
+        assert_eq!(s.fields.len(), 2);
+        assert_eq!(s.fields[0].0, "ok");
+        assert_eq!(s.fields[0].1, "o");
     }
 }

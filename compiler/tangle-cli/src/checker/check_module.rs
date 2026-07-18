@@ -170,6 +170,10 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
                     let (_, mut expr_diags) = check_expression(&s.expr, &block_env);
                     diagnostics.append(&mut expr_diags);
                 }
+                // TODO(Phase 6d): implement type checking for refutable let and
+                // record destructuring. No-op for now; subsequent checker task
+                // will replace this with full implementation.
+                Stmt::LetVariant(_) | Stmt::LetRecord(_) => {}
             }
         }
     }

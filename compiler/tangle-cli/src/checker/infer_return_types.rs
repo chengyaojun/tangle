@@ -62,6 +62,10 @@ fn infer_function_return_type(
                     // `return;`（无值）不贡献类型
                 }
                 Stmt::Expression(_) => {}
+                // TODO(Phase 6d): handle return-type contributions from
+                // refutable let and record destructuring. No-op for now;
+                // subsequent checker task will replace this.
+                Stmt::LetVariant(_) | Stmt::LetRecord(_) => {}
             }
         }
     }

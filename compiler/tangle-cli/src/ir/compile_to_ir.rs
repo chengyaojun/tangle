@@ -192,6 +192,11 @@ fn lower_function_body(
                 Stmt::Let(s) => (IRNodeKind::Compute, format!("let {}", s.name)),
                 Stmt::Const(s) => (IRNodeKind::Compute, format!("const {}", s.name)),
                 Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
+                // TODO(Phase 6d): emit proper IR nodes for refutable let and
+                // record destructuring. Placeholder labels for now; subsequent
+                // IR task will replace this with full implementation.
+                Stmt::LetVariant(s) => (IRNodeKind::Compute, format!("let_variant {}", s.variant_name)),
+                Stmt::LetRecord(_) => (IRNodeKind::Compute, "let_record".to_string()),
             };
             let src = stmt_source(stmt, &block.source);
             let node_id = id_gen.fresh();

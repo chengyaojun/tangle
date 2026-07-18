@@ -7,6 +7,8 @@ pub(crate) fn stmt_source(stmt: &Stmt, source: &str) -> String {
         Stmt::Let(s) => &s.span,
         Stmt::Const(s) => &s.span,
         Stmt::Expression(s) => &s.span,
+        Stmt::LetVariant(s) => &s.span,
+        Stmt::LetRecord(s) => &s.span,
     };
     let lines: Vec<&str> = source.lines().collect();
     let start = span.start_line.saturating_sub(1);
@@ -36,6 +38,11 @@ pub fn lower_statements(stmts: &[Stmt], source: &str, _file: &str, id_gen: &mut 
             Stmt::Let(s) => (IRNodeKind::Compute, format!("let {}", s.name)),
             Stmt::Const(s) => (IRNodeKind::Compute, format!("const {}", s.name)),
             Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
+            // TODO(Phase 6d): emit proper IR nodes for refutable let and
+            // record destructuring. Placeholder labels for now; subsequent
+            // IR task will replace this with full implementation.
+            Stmt::LetVariant(s) => (IRNodeKind::Compute, format!("let_variant {}", s.variant_name)),
+            Stmt::LetRecord(_) => (IRNodeKind::Compute, "let_record".to_string()),
         };
         let src = stmt_source(stmt, source);
 

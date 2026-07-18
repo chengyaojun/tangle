@@ -290,6 +290,15 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             });
             Type::Primitive(PrimitiveType { name: "Bool".into() })
         }
+        // TODO(Phase 6d): implement proper type narrowing for `is` expressions.
+        // For now returns Bool (the result type of the type test) without
+        // narrowing the binding in the env. Subsequent checker task will
+        // replace this with full implementation.
+        Expr::Is(e) => {
+            let (_expr_ty, mut expr_diags) = check_expression(&e.expr, env);
+            diags.append(&mut expr_diags);
+            Type::Primitive(PrimitiveType { name: "Bool".into() })
+        }
     };
     (ty, diags)
 }
