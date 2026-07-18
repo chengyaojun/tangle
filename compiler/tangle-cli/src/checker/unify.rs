@@ -100,3 +100,110 @@ pub fn substitute(ty: &Type, subst: &Substitution) -> Type {
         _ => ty.clone(),
     }
 }
+
+/// 统一类型列表：以第一个为锚点，逐个 unify。
+/// 成功返回统一后的类型（含 type_var 替换）；失败返回 None。
+/// 用于 return 路径类型统一、Match arm body 类型统一。
+pub fn unify_all(types: &[Type]) -> Option<Type> {
+    if types.is_empty() {
+        return None;
+    }
+    let mut subst: Substitution = HashMap::new();
+    let anchor = &types[0];
+    for other in &types[1..] {
+        if unify(anchor, other, &mut subst).is_err() {
+            return None;
+        }
+    }
+    Some(substitute(anchor, &subst))
+}
+
+/// 统一两个类型（用于 If then/else 分支统一）。
+/// 成功返回统一后的类型；失败返回 None。
+pub fn unify_pair(a: &Type, b: &Type) -> Option<Type> {
+    let mut subst: Substitution = HashMap::new();
+    match unify(a, b, &mut subst) {
+        Ok(()) => Some(substitute(a, &subst)),
+        Err(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod unify_all_tests {
+    use super::*;
+
+    fn prim(name: &str) -> Type {
+        Type::Primitive(PrimitiveType { name: name.to_string() })
+    }
+
+    fn list_int() -> Type {
+        Type::GenericInstance(GenericTypeInstance {
+            base: "List".to_string(),
+            args: vec![prim("Int")],
+        })
+    }
+
+    #[test]
+    fn unify_all_empty_returns_none() {
+        assert!(unify_all(&[]).is_none());
+    }
+
+    #[test]
+    fn unify_all_single_returns_it() {
+        let types = vec![prim("Int")];
+        let result = unify_all(&types).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+
+    #[test]
+    fn unify_all_same_types_succeeds() {
+        let types = vec![prim("Int"), prim("Int"), prim("Int")];
+        let result = unify_all(&types).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+
+    #[test]
+    fn unify_all_conflict_returns_none() {
+        let types = vec![prim("Int"), prim("String")];
+        assert!(unify_all(&types).is_none());
+    }
+
+    #[test]
+    fn unify_all_with_any_succeeds() {
+        let types = vec![prim("Int"), Type::Any];
+        let result = unify_all(&types).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+
+    #[test]
+    fn unify_all_generic_instances() {
+        let types = vec![list_int(), list_int()];
+        let result = unify_all(&types).unwrap();
+        assert_eq!(result, list_int());
+    }
+
+    #[test]
+    fn unify_pair_same_succeeds() {
+        let result = unify_pair(&prim("Int"), &prim("Int")).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+
+    #[test]
+    fn unify_pair_conflict_returns_none() {
+        assert!(unify_pair(&prim("Int"), &prim("String")).is_none());
+    }
+
+    #[test]
+    fn unify_pair_with_any_succeeds() {
+        let result = unify_pair(&prim("Int"), &Type::Any).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+
+    #[test]
+    fn unify_all_binds_type_var() {
+        let var = Type::Var(TypeVariable { id: 0 });
+        let types = vec![var, prim("Int")];
+        let result = unify_all(&types).unwrap();
+        assert_eq!(result, prim("Int"));
+    }
+}
