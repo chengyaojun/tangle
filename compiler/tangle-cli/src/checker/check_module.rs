@@ -20,6 +20,8 @@ pub struct CheckedModule {
     pub diagnostics: Vec<TangleDiagnostic>,
     pub parsed_blocks: Vec<ParsedCodeBlock>,
     pub type_env: TypeEnv,
+    /// 函数 heading_id → 推断出的返回类型（Phase 6c 新增）
+    pub return_types: HashMap<String, Type>,
 }
 
 /// Parse all @tangle code blocks in the module
@@ -172,7 +174,7 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         }
     }
 
-    CheckedModule {
+    let mut checked = CheckedModule {
         file: module.file,
         module_name: module.module_name,
         imports: module.imports,
@@ -181,7 +183,10 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         diagnostics,
         parsed_blocks,
         type_env,
-    }
+        return_types: HashMap::new(),
+    };
+    checked.return_types = crate::checker::infer_return_types::infer_return_types(&checked);
+    checked
 }
 
 /// Find a heading by id, recursively searching the heading tree.

@@ -1,6 +1,7 @@
 use crate::ast::{ParsedCodeBlock, Stmt};
 use crate::checker::check_module::CheckedModule;
 use crate::checker::resolve::type_name_to_type;
+use crate::checker::types::Type;
 use crate::ir::graph::*;
 use crate::ir::lower::lower_statements;
 use crate::ir::lower::stmt_source;
@@ -77,7 +78,7 @@ pub fn compile_to_ir(checked: &CheckedModule) -> (RuleGraph, Vec<TangleDiagnosti
     // `main` entry, so the top-level / functions[] split stays consistent.
     if has_main {
         let mut functions: Vec<IRFunction> = vec![];
-        collect_functions(&checked.headings, None, &checked.parsed_blocks, &mut id_gen, &mut functions);
+        collect_functions(&checked.headings, None, &checked.parsed_blocks, &mut id_gen, &checked.return_types, &mut functions);
         graph.functions = functions;
     }
 
@@ -132,6 +133,7 @@ fn collect_functions(
     parent: Option<&TangleHeading>,
     parsed_blocks: &[ParsedCodeBlock],
     id_gen: &mut FreshNodeId,
+    return_types: &std::collections::HashMap<String, Type>,
     out: &mut Vec<IRFunction>,
 ) {
     for h in headings {
@@ -156,7 +158,7 @@ fn collect_functions(
                     name: name.clone(),
                     receiver,
                     params,
-                    return_type: None,
+                    return_type: return_types.get(&h.id).cloned(),
                     nodes,
                     edges,
                     entry_node_id: entry_id,
@@ -164,7 +166,7 @@ fn collect_functions(
                 });
             }
         }
-        collect_functions(&h.children, Some(h), parsed_blocks, id_gen, out);
+        collect_functions(&h.children, Some(h), parsed_blocks, id_gen, return_types, out);
     }
 }
 

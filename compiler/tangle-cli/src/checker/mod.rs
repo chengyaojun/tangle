@@ -9,6 +9,7 @@ pub mod match_check;
 pub mod panic_check;
 pub mod check_module;
 pub mod unify;
+pub mod infer_return_types;
 
 pub use types::*;
 pub use builtins::*;
@@ -21,3 +22,4 @@ pub use match_check::*;
 pub use panic_check::*;
 pub use check_module::*;
 pub use unify::*;
+pub use infer_return_types::*;

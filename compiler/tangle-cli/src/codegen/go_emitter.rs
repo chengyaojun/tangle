@@ -267,8 +267,8 @@ fn emit_multi_function_go(functions: &[IRFunction]) -> String {
     for func in functions {
         let name = &func.name;
         let params_str = func.params.iter().map(format_go_param).collect::<Vec<_>>().join(", ");
-        // 返回类型：return_type 为 None 时用 Result（现有约定），Phase 6c 实现返回推导后可覆盖
-        let ret_ty = func.return_type.as_ref().map(tangle_type_to_go).unwrap_or_else(|| "Result".into());
+        // Phase 6c 设计 A：外部签名恒为 Result，return_type 仅作 IR 元数据
+        let ret_ty = "Result";
         if name == "main" {
             // Wrap main as mainImpl() Result so its `return Ok/Err` statements
             // compile; `func main()` itself cannot declare a return type.
