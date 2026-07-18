@@ -124,7 +124,7 @@ export function compileToIR(checked: CheckedModule): { graph: CompiledGraph; dia
   // Rust compile_to_ir.rs:77-81.
   if (hasMain) {
     const functions: IRFunction[] = [];
-    collectFunctions(roots, null, checked.parsedBlocks, functions);
+    collectFunctions(roots, null, checked.parsedBlocks, checked.returnTypes, functions);
     graph.functions = functions;
   }
 
@@ -212,11 +212,13 @@ function hasMainCallable(headings: TangleHeading[]): boolean {
 /// that has `@tangle` code blocks. Mirror of Rust `collect_functions` in
 /// compile_to_ir.rs:129-164. `parent` determines the receiver: a Callable
 /// under a Type heading becomes a method `Type.method`; `main` and free
-/// callables get `receiver = null`.
+/// callables get `receiver = null`. `returnTypes` carries the inferred
+/// return types from checkModule's inferReturnTypes pass.
 function collectFunctions(
   headings: TangleHeading[],
   parent: TangleHeading | null,
   parsedBlocks: ParsedCodeBlock[],
+  returnTypes: Map<string, Type>,
   out: IRFunction[],
 ): void {
   for (const h of headings) {
@@ -237,9 +239,9 @@ function collectFunctions(
       }));
       const blocks = parsedBlocks.filter(b => b.headingId === h.id);
       const { nodes, edges, entryNodeId, errorEdges } = lowerFunctionBody(blocks);
-      out.push({ name, receiver, params, returnType: undefined, nodes, edges, entryNodeId, errorEdges });
+      out.push({ name, receiver, params, returnType: returnTypes.get(h.id) ?? undefined, nodes, edges, entryNodeId, errorEdges });
     }
-    collectFunctions(h.children, h, parsedBlocks, out);
+    collectFunctions(h.children, h, parsedBlocks, returnTypes, out);
   }
 }
 

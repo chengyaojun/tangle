@@ -1,6 +1,7 @@
 import type { TangleModule, TangleDiagnostic } from "../model.js";
 import type { ParsedCodeBlock } from "../ast.js";
 import type { TypeEnv } from "./env.js";
+import type { Type } from "./types.js";
 import { tokenize } from "../parser/lexer.js";
 import { parseCodeBody } from "../parser/parser.js";
 import { resolveTypes, findReceiverHeading, typeExprToType } from "./resolve.js";
@@ -9,10 +10,12 @@ import { createEnv } from "./env.js";
 import { ErrorRegistry } from "./errors.js";
 import { parseTypeExpr } from "../parser/typeParser.js";
 import { registerBuiltins } from "./builtins.js";
+import { inferReturnTypes } from "./inferReturnTypes.js";
 
 export type CheckedModule = TangleModule & {
   parsedBlocks: ParsedCodeBlock[];
   typeEnv: TypeEnv;
+  returnTypes: Map<string, Type>;
 };
 
 export function parseCodeBlocks(module: TangleModule): ParsedCodeBlock[] {
@@ -97,10 +100,17 @@ export function checkModule(module: TangleModule): CheckedModule {
     }
   }
 
+  const returnTypes = inferReturnTypes({
+    headings: module.headings,
+    parsedBlocks,
+    typeEnv: env,
+  });
+
   return {
     ...module,
     parsedBlocks,
     typeEnv: env,
+    returnTypes,
     diagnostics: allDiagnostics
   };
 }
