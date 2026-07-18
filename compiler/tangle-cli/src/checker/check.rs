@@ -231,9 +231,23 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
         Expr::Match(e) => {
             let (matched_ty, mut match_diags) = check_expression(&e.expr, env);
             diags.append(&mut match_diags);
+            let mut arm_types = vec![];
             for arm in &e.arms {
-                let (_, mut arm_diags) = check_expression(&arm.body, env);
+                // 构造收窄后的 arm 局部环境
+                let mut arm_env = env.clone();
+                if let Type::Sum(ref sum) = matched_ty {
+                    if let MatchPattern::Variant { ref name, ref binding } = arm.pattern {
+                        if let Some(variant_ty) = crate::checker::match_check::find_variant_by_name(sum, name) {
+                            if let Some(ref bind_name) = binding {
+                                let bind_ty = crate::checker::match_check::binding_type_of(variant_ty);
+                                arm_env.variables.insert(bind_name.clone(), bind_ty);
+                            }
+                        }
+                    }
+                }
+                let (arm_ty, mut arm_diags) = check_expression(&arm.body, &arm_env);
                 diags.append(&mut arm_diags);
+                arm_types.push(arm_ty);
             }
             if let Type::Sum(ref sum) = matched_ty {
                 let missing = crate::checker::match_check::check_match_exhaustiveness(sum, &e.arms);
@@ -245,7 +259,9 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                     });
                 }
             }
-            Type::Primitive(PrimitiveType { name: "Bool".into() })
+            // 返回所有 arm body 类型的统一结果（最佳努力，失败回退 Any）
+            crate::checker::unify::unify_all(&arm_types)
+                .unwrap_or(Type::Any)
         }
         Expr::Destructure(e) => {
             let (inner_ty, mut inner_diags) = check_expression(&e.expr, env);
@@ -348,5 +364,158 @@ mod if_expr_tests {
             Type::Primitive(p) => assert_eq!(p.name, "Int"),
             other => panic!("expected Int (then fallback), got {:?}", other),
         }
+    }
+}
+
+#[cfg(test)]
+mod match_narrowing_tests {
+    use super::*;
+    use crate::model::SourceSpan;
+    use std::collections::HashMap;
+
+    fn span() -> SourceSpan {
+        SourceSpan { file: "".into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 }
+    }
+
+    fn num_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "0".to_string(), span: span() })
+    }
+
+    fn ident_expr(name: &str) -> Expr {
+        Expr::Identifier(IdentifierExpr { name: name.to_string(), span: span() })
+    }
+
+    fn arm(name: &str, binding: Option<&str>, body: Expr) -> MatchArm {
+        MatchArm {
+            pattern: MatchPattern::Variant {
+                name: name.to_string(),
+                binding: binding.map(|s| s.to_string()),
+            },
+            body,
+            span: span(),
+        }
+    }
+
+    fn match_expr(scrutinee: Expr, arms: Vec<MatchArm>) -> Expr {
+        Expr::Match(MatchExpr {
+            expr: Box::new(scrutinee),
+            arms,
+            span: span(),
+        })
+    }
+
+    fn env_with_var(name: &str, ty: Type) -> TypeEnv {
+        let mut vars = HashMap::new();
+        vars.insert(name.to_string(), ty);
+        TypeEnv {
+            variables: vars,
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    fn prim(name: &str) -> Type {
+        Type::Primitive(PrimitiveType { name: name.to_string() })
+    }
+
+    #[test]
+    fn match_narrows_generic_instance_binding() {
+        // match x { Some(y) => return y, None => return 0 }
+        // x: Some<Int> | None, y should be narrowed to Int
+        let sum_ty = Type::Sum(SumType {
+            variants: vec![
+                Type::GenericInstance(GenericTypeInstance {
+                    base: "Some".to_string(),
+                    args: vec![prim("Int")],
+                }),
+                prim("None"),
+            ],
+        });
+        let env = env_with_var("x", sum_ty);
+        let m = match_expr(
+            ident_expr("x"),
+            vec![
+                arm("Some", Some("y"), ident_expr("y")),
+                arm("None", None, num_expr()),
+            ],
+        );
+        let (ty, diags) = check_expression(&m, &env);
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        // Both arms return Int → unified to Int
+        match ty {
+            Type::Primitive(ref p) => assert_eq!(p.name, "Int", "expected Int, got {:?}", ty),
+            other => panic!("expected Int, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn match_narrows_primitive_binding() {
+        // match x { Int(y) => return y, String(s) => return s }
+        // x: Int | String, y: Int, s: String → conflict → Any
+        let sum_ty = Type::Sum(SumType {
+            variants: vec![prim("Int"), prim("String")],
+        });
+        let env = env_with_var("x", sum_ty);
+        let m = match_expr(
+            ident_expr("x"),
+            vec![
+                arm("Int", Some("y"), ident_expr("y")),
+                arm("String", Some("s"), ident_expr("s")),
+            ],
+        );
+        let (ty, _diags) = check_expression(&m, &env);
+        // Int vs String conflict → Any
+        assert!(matches!(ty, Type::Any), "expected Any on conflict, got {:?}", ty);
+    }
+
+    #[test]
+    fn match_no_narrowing_for_non_sum() {
+        // match x { _ => return 0 } where x is Int (not Sum)
+        let env = env_with_var("x", prim("Int"));
+        let m = match_expr(
+            ident_expr("x"),
+            vec![MatchArm {
+                pattern: MatchPattern::Wildcard,
+                body: num_expr(),
+                span: span(),
+            }],
+        );
+        let (ty, _diags) = check_expression(&m, &env);
+        match ty {
+            Type::Primitive(p) => assert_eq!(p.name, "Int"),
+            other => panic!("expected Int, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn match_returns_unified_arm_types() {
+        // match x { Some(y) => return y, None => return 0 }
+        // Both arms Int → unified Int (not Bool)
+        let sum_ty = Type::Sum(SumType {
+            variants: vec![
+                Type::GenericInstance(GenericTypeInstance {
+                    base: "Some".to_string(),
+                    args: vec![prim("Int")],
+                }),
+                prim("None"),
+            ],
+        });
+        let env = env_with_var("x", sum_ty);
+        let m = match_expr(
+            ident_expr("x"),
+            vec![
+                arm("Some", Some("y"), ident_expr("y")),
+                arm("None", None, num_expr()),
+            ],
+        );
+        let (ty, _) = check_expression(&m, &env);
+        // Should NOT be Bool (old behavior); should be Int (unified)
+        assert!(
+            !matches!(ty, Type::Primitive(PrimitiveType { name }) if name == "Bool"),
+            "should not return Bool (old behavior)"
+        );
     }
 }
