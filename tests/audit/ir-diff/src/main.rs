@@ -146,6 +146,7 @@ fn build_id_map(v: &Value) -> std::collections::HashMap<String, String> {
 ///   serializes as `null` (Phase 5: rule lowering port produces these fields)
 /// - normalize label "return" → "exit" (F-011)
 /// - remap node IDs to positional ids via `id_map` (F-007)
+/// - bridge `CallableSignature.params` tuple→object format (Phase 6c)
 /// - sort object keys for stable comparison
 ///
 /// Arrays are compared element-wise in their original order (node IDs are
@@ -171,6 +172,17 @@ fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Va
                 if v == Value::Null && matches!(k.as_str(), "group" | "style" | "priority" | "type" | "returnType") {
                     continue;
                 }
+                // Phase 6c: strip empty `methods` field. Rust's StructType has
+                // `#[serde(skip_serializing_if = "HashMap::is_empty")]` on methods,
+                // so empty methods are omitted. TS's JSON.stringify always includes
+                // `methods: {}`. Strip the empty object on TS side to bridge this.
+                if k == "methods" {
+                    if let Value::Object(m) = &v {
+                        if m.is_empty() {
+                            continue;
+                        }
+                    }
+                }
                 // F-011: normalize label "return" → "exit"
                 if k == "label" {
                     if let Some(s) = v.as_str() {
@@ -185,6 +197,39 @@ fn normalize(v: Value, id_map: &std::collections::HashMap<String, String>) -> Va
                     if let Some(s) = v.as_str() {
                         if let Some(remapped) = id_map.get(s) {
                             filtered.push((k, Value::String(remapped.clone())));
+                            continue;
+                        }
+                    }
+                }
+                // Phase 6c: bridge CallableSignature.params tuple→object format.
+                // Rust's `Vec<(String, Type)>` serializes as `[["name", type], ...]`
+                // (tuple array) while TS's `{name, type}[]` serializes as
+                // `[{name, type}, ...]` (object array). Convert tuple form to
+                // object form so structural comparison succeeds. Top-level
+                // IRFunction.params already uses object form on both sides, so
+                // this branch is a no-op for those (no elements match the tuple
+                // pattern). Nested CallableSignature.params inside
+                // `returnType.methods.X.params` is where the mismatch lives.
+                if k == "params" {
+                    if let Value::Array(arr) = &v {
+                        if arr.iter().any(|e| matches!(e, Value::Array(t) if t.len() == 2 && t[0].is_string())) {
+                            let converted: Vec<Value> = arr
+                                .iter()
+                                .map(|elem| match elem {
+                                    Value::Array(tuple) if tuple.len() == 2 => {
+                                        if let Some(name) = tuple[0].as_str() {
+                                            return json!({
+                                                "name": name,
+                                                "type": tuple[1].clone(),
+                                            });
+                                        }
+                                        elem.clone()
+                                    }
+                                    _ => elem.clone(),
+                                })
+                                .map(|x| normalize(x, id_map))
+                                .collect();
+                            filtered.push((k, Value::Array(converted)));
                             continue;
                         }
                     }
@@ -569,5 +614,105 @@ mod tests {
         let r = normalize_function(&rust_func);
         let t = normalize_function(&ts_func);
         assert_eq!(r, t, "identical typed params should compare equal after normalization");
+    }
+
+    /// CallableSignature.params（位于 returnType.methods.X.params 内）在 Rust 端
+    /// 序列化为元组数组 `[["name", type], ...]`（源自 `Vec<(String, Type)>`），
+    /// 在 TS 端序列化为对象数组 `[{name, type}, ...]`。归一化应将元组形式转为
+    /// 对象形式，使两侧结构比较一致。顶层 IRFunction.params 两边均为对象形式，
+    /// 不受此转换影响。
+    #[test]
+    fn normalize_bridges_callable_signature_params_tuple_to_object() {
+        // Rust 端：methods.create.params 为元组数组
+        let rust_func = json!({
+            "name": "create",
+            "params": [{"name": "id", "type": {"kind": "primitive", "name": "String"}}],
+            "returnType": {
+                "kind": "struct",
+                "name": "Order",
+                "fields": {},
+                "methods": {
+                    "create": {
+                        "params": [
+                            ["id", {"kind": "primitive", "name": "String"}],
+                            ["amount", {"kind": "primitive", "name": "Int"}]
+                        ],
+                        "returns": {"kind": "any"}
+                    }
+                }
+            },
+            "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        // TS 端：methods.create.params 为对象数组
+        let ts_func = json!({
+            "name": "create",
+            "params": [{"name": "id", "type": {"kind": "primitive", "name": "String"}}],
+            "returnType": {
+                "kind": "struct",
+                "name": "Order",
+                "fields": {},
+                "methods": {
+                    "create": {
+                        "params": [
+                            {"name": "id", "type": {"kind": "primitive", "name": "String"}},
+                            {"name": "amount", "type": {"kind": "primitive", "name": "Int"}}
+                        ],
+                        "returns": {"kind": "any"}
+                    }
+                }
+            },
+            "nodes": [{"id": "entry1", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "entry1"
+        });
+        let r = normalize_function(&rust_func);
+        let t = normalize_function(&ts_func);
+        assert_eq!(r, t, "CallableSignature.params tuple form should normalize to object form");
+    }
+
+    /// 空的 CallableSignature.params 数组（`[]`）两侧形式一致，不应触发转换。
+    #[test]
+    fn normalize_preserves_empty_callable_signature_params() {
+        let rust_func = json!({
+            "name": "confirm",
+            "params": [],
+            "returnType": {
+                "kind": "struct",
+                "name": "Order",
+                "fields": {},
+                "methods": {
+                    "confirm": {
+                        "params": [],
+                        "returns": {"kind": "any"}
+                    }
+                }
+            },
+            "nodes": [{"id": "n0", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "n0"
+        });
+        let ts_func = json!({
+            "name": "confirm",
+            "params": [],
+            "returnType": {
+                "kind": "struct",
+                "name": "Order",
+                "fields": {},
+                "methods": {
+                    "confirm": {
+                        "params": [],
+                        "returns": {"kind": "any"}
+                    }
+                }
+            },
+            "nodes": [{"id": "entry1", "kind": "action", "label": "do"}],
+            "edges": [],
+            "entryNodeId": "entry1"
+        });
+        let r = normalize_function(&rust_func);
+        let t = normalize_function(&ts_func);
+        assert_eq!(r, t, "empty CallableSignature.params should compare equal");
     }
 }
