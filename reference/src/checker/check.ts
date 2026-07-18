@@ -3,8 +3,8 @@ import type { TangleDiagnostic } from "../model.js";
 import type { Type, StructType } from "./types.js";
 import type { TypeEnv } from "./env.js";
 import { typesEqual } from "./types.js";
-import { unify, substitute, type Substitution } from "./unify.js";
-import { checkMatchExhaustiveness } from "./match.js";
+import { unify, substitute, type Substitution, unifyAll, unifyPair } from "./unify.js";
+import { checkMatchExhaustiveness, findVariantByName, bindingTypeOf } from "./match.js";
 
 export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnostic[]] {
   const diags: TangleDiagnostic[] = [];
@@ -142,8 +142,10 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
       const [thenType, thenDiags] = checkExpression(expr.thenBranch, env);
       diags.push(...thenDiags);
       if (expr.elseBranch) {
-        const [, elseDiags] = checkExpression(expr.elseBranch, env);
+        const [elseType, elseDiags] = checkExpression(expr.elseBranch, env);
         diags.push(...elseDiags);
+        const unified = unifyPair(thenType, elseType);
+        return [unified ?? thenType, diags];
       }
       return [thenType, diags];
     }
@@ -172,12 +174,24 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "match": {
       const [matchType, matchDiags] = checkExpression(expr.expr, env);
       diags.push(...matchDiags);
-      // Type-check each arm body
-      let resultType: Type = { kind: "primitive", name: "Bool" };
+      // Type-check each arm body with narrowed binding type
+      const armTypes: Type[] = [];
       for (const arm of expr.arms) {
-        const [armType, armDiags] = checkExpression(arm.body, env);
+        // 构造收窄后的 arm 局部环境
+        const armEnv: TypeEnv = {
+          ...env,
+          variables: { ...env.variables },
+        };
+        if (matchType.kind === "sum" && arm.pattern.kind === "variantPattern") {
+          const variant = findVariantByName(matchType, arm.pattern.name);
+          if (variant && arm.pattern.binding) {
+            const bindType = bindingTypeOf(variant);
+            armEnv.variables[arm.pattern.binding] = bindType;
+          }
+        }
+        const [armType, armDiags] = checkExpression(arm.body, armEnv);
         diags.push(...armDiags);
-        resultType = armType; // last arm type wins (simplified)
+        armTypes.push(armType);
       }
       // Check exhaustiveness
       const patternNames = expr.arms.map((a) =>
@@ -193,6 +207,8 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
           });
         }
       }
+      // 返回所有 arm body 类型的统一结果（最佳努力，失败回退 Any）
+      const resultType = unifyAll(armTypes) ?? { kind: "any" as const };
       return [resultType, diags];
     }
 

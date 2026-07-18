@@ -89,3 +89,25 @@ export function substitute(ty: Type, subst: Substitution): Type {
       return ty;
   }
 }
+
+/// 统一类型列表：以第一个为锚点，逐个 unify。
+/// 成功返回统一后的类型（含 type_var 替换）；失败返回 null。
+export function unifyAll(types: Type[]): Type | null {
+  if (types.length === 0) return null;
+  const subst: Substitution = new Map();
+  const anchor = types[0]!;
+  for (let i = 1; i < types.length; i++) {
+    const err = unify(anchor, types[i]!, subst);
+    if (err !== null) return null;
+  }
+  return substitute(anchor, subst);
+}
+
+/// 统一两个类型（用于 If then/else 分支统一）。
+/// 成功返回统一后的类型；失败返回 null。
+export function unifyPair(a: Type, b: Type): Type | null {
+  const subst: Substitution = new Map();
+  const err = unify(a, b, subst);
+  if (err !== null) return null;
+  return substitute(a, subst);
+}
