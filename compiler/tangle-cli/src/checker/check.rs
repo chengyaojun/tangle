@@ -248,7 +248,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                     if let MatchPattern::Variant { ref name, ref binding } = arm.pattern {
                         if let Some(variant_ty) = crate::checker::match_check::find_variant_by_name(&sum, name) {
                             if let Some(ref bind_name) = binding {
-                                let bind_ty = crate::checker::match_check::binding_type_of(variant_ty);
+                                let raw_ty = crate::checker::match_check::binding_type_of(variant_ty);
+                                let bind_ty = crate::checker::option_view::resolve_struct_in_env(&raw_ty, env);
                                 arm_env.variables.insert(bind_name.clone(), bind_ty);
                             }
                         }
@@ -750,6 +751,82 @@ mod phase6d_is_tests {
         assert!(
             matches!(ty, Type::Primitive(PrimitiveType { ref name }) if name == "Int"),
             "expected Int, got {:?}", ty
+        );
+    }
+
+    #[test]
+    fn match_option_struct_resolves_payload_from_env() {
+        // Bug 再现：`opt: Option<Item>` 中 `Item` 来自 type_expr_to_type，
+        // 是空字段外壳；真实定义（带 name/price 字段）在 env.structs 里。
+        // `match opt { Some(x) => x, None => default }` 期望 x 拥有完整 Item 类型。
+        let mut structs: HashMap<String, Type> = HashMap::new();
+        let mut item_fields: HashMap<String, Type> = HashMap::new();
+        item_fields.insert("name".to_string(), prim("String"));
+        item_fields.insert("price".to_string(), prim("Int"));
+        structs.insert(
+            "Item".to_string(),
+            Type::Struct(StructType {
+                name: "Item".to_string(),
+                fields: item_fields,
+                methods: HashMap::new(),
+            }),
+        );
+        let item_empty = Type::Struct(StructType {
+            name: "Item".to_string(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        });
+        let option_item = Type::GenericInstance(GenericTypeInstance {
+            base: "Option".to_string(),
+            args: vec![item_empty],
+        });
+        let mut vars: HashMap<String, Type> = HashMap::new();
+        vars.insert("opt".to_string(), option_item);
+        let env = TypeEnv {
+            variables: vars,
+            structs,
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        };
+        let match_expr = Expr::Match(MatchExpr {
+            expr: Box::new(ident_expr("opt")),
+            arms: vec![
+                MatchArm {
+                    pattern: MatchPattern::Variant {
+                        name: "Some".to_string(),
+                        binding: Some("x".to_string()),
+                    },
+                    body: Expr::MemberAccess(MemberAccessExpr {
+                        object: Box::new(ident_expr("x")),
+                        member: "name".to_string(),
+                        span: span(),
+                    }),
+                    span: span(),
+                },
+                MatchArm {
+                    pattern: MatchPattern::Variant {
+                        name: "None".to_string(),
+                        binding: None,
+                    },
+                    body: Expr::Literal(LiteralExpr {
+                        literal_kind: LiteralKind::String,
+                        value: "".to_string(),
+                        span: span(),
+                    }),
+                    span: span(),
+                },
+            ],
+            span: span(),
+        });
+        let (_ty, diags) = check_expression(&match_expr, &env);
+        let has_field_error = diags.iter()
+            .any(|d| d.code == "TANGLE_SYMBOL_NOT_FOUND" && d.message.contains("Field 'name'"));
+        assert!(
+            !has_field_error,
+            "x should resolve to Item with fields from env.structs, got diagnostics: {:?}",
+            diags
         );
     }
 }

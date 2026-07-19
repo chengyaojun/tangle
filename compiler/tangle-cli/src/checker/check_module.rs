@@ -5,7 +5,7 @@ use crate::checker::env::{ReceiverContext, TypeEnv};
 use crate::checker::errors::ErrorRegistry;
 use crate::checker::resolve::{find_receiver_heading, resolve_types};
 use crate::checker::check::check_expression;
-use crate::checker::option_view::as_sum_view;
+use crate::checker::option_view::{as_sum_view, resolve_struct_in_env};
 use crate::checker::match_check::{find_variant_by_name, binding_type_of};
 use crate::checker::check::type_display;
 use crate::parser::lexer::tokenize;
@@ -193,7 +193,8 @@ fn check_stmt(stmt: &Stmt, env: &mut TypeEnv, diags: &mut Vec<TangleDiagnostic>)
             if let Some(sum) = as_sum_view(&matched_ty) {
                 if let Some(variant_ty) = find_variant_by_name(&sum, &s.variant_name) {
                     if let Some(ref bind_name) = s.binding {
-                        let bind_ty = binding_type_of(variant_ty);
+                        let raw_ty = binding_type_of(variant_ty);
+                        let bind_ty = resolve_struct_in_env(&raw_ty, env);
                         env.variables.insert(bind_name.clone(), bind_ty);
                     }
                     for stmt in &s.else_branch {
@@ -374,6 +375,64 @@ mod phase6d_let_variant_tests {
             diags.iter().any(|d| d.code == "TANGLE_PATTERN_VARIANT_NOT_FOUND"),
             "expected TANGLE_PATTERN_VARIANT_NOT_FOUND diagnostic, got: {:?}", diags
         );
+    }
+
+    #[test]
+    fn let_variant_resolves_struct_payload_from_env() {
+        // Bug 再现：`opt: Option<Item>` 中 `Item` 来自 type_expr_to_type，
+        // 是空字段外壳；真实定义（带 name/price 字段）在 env.structs 里。
+        // `let Some(y) = opt else { return 0 }` 期望 y 拥有完整 Item 类型（含字段）。
+        let mut structs = HashMap::new();
+        let mut item_fields = HashMap::new();
+        item_fields.insert("name".to_string(), Type::Primitive(PrimitiveType { name: "String".into() }));
+        item_fields.insert("price".to_string(), Type::Primitive(PrimitiveType { name: "Int".into() }));
+        structs.insert(
+            "Item".to_string(),
+            Type::Struct(StructType {
+                name: "Item".to_string(),
+                fields: item_fields,
+                methods: HashMap::new(),
+            }),
+        );
+        let item_empty = Type::Struct(StructType {
+            name: "Item".to_string(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        });
+        let option_item = Type::GenericInstance(GenericTypeInstance {
+            base: "Option".to_string(),
+            args: vec![item_empty],
+        });
+        let mut vars = HashMap::new();
+        vars.insert("opt".to_string(), option_item);
+        let mut env = TypeEnv {
+            variables: vars,
+            structs,
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        };
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let else_branch = vec![Stmt::Return(ReturnStmt { value: Some(num_expr()), span: span() })];
+        let stmt = let_variant_stmt("Some", Some("y"), ident_expr("opt"), else_branch);
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        let y_ty = env.variables.get("y").expect("expected y to be injected into env");
+        match y_ty {
+            Type::Struct(s) => {
+                assert_eq!(s.name, "Item");
+                assert!(
+                    s.fields.contains_key("name"),
+                    "y should have name field from env.structs, got fields: {:?}", s.fields
+                );
+                assert!(
+                    s.fields.contains_key("price"),
+                    "y should have price field from env.structs, got fields: {:?}", s.fields
+                );
+            }
+            other => panic!("expected Struct, got {:?}", other),
+        }
     }
 }
 

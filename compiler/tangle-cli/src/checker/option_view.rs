@@ -1,3 +1,4 @@
+use crate::checker::env::TypeEnv;
 use crate::checker::types::*;
 use std::collections::HashMap;
 
@@ -23,6 +24,25 @@ pub fn as_sum_view(ty: &Type) -> Option<SumType> {
             })
         }
         _ => None,
+    }
+}
+
+/// 在 env.structs 中查找同名结构体，若有则返回带字段的完整定义。
+///
+/// 背景：`type_expr_to_type` 解析 `Option<Item>` 时会生成空字段的外壳
+/// `Type::Struct(Item { fields: {} })`。真实带字段的定义位于 `env.structs`。
+/// 此函数用于在 binding 类型注入前补全结构体定义，使后续 `let { ... } = x`
+/// 解构能找到字段。
+pub fn resolve_struct_in_env(ty: &Type, env: &TypeEnv) -> Type {
+    match ty {
+        Type::Struct(s) => {
+            if let Some(Type::Struct(full)) = env.structs.get(&s.name) {
+                Type::Struct(full.clone())
+            } else {
+                ty.clone()
+            }
+        }
+        other => other.clone(),
     }
 }
 
@@ -113,5 +133,85 @@ mod tests {
     #[test]
     fn as_sum_view_rejects_any() {
         assert!(as_sum_view(&Type::Any).is_none());
+    }
+
+    fn empty_env() -> TypeEnv {
+        TypeEnv {
+            variables: HashMap::new(),
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    fn env_with_struct(name: &str, fields: Vec<(&str, Type)>) -> TypeEnv {
+        let mut env = empty_env();
+        let mut field_map = HashMap::new();
+        for (fn_, ty) in fields {
+            field_map.insert(fn_.to_string(), ty);
+        }
+        env.structs.insert(
+            name.to_string(),
+            Type::Struct(StructType {
+                name: name.to_string(),
+                fields: field_map,
+                methods: HashMap::new(),
+            }),
+        );
+        env
+    }
+
+    fn empty_struct(name: &str) -> Type {
+        Type::Struct(StructType {
+            name: name.to_string(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        })
+    }
+
+    #[test]
+    fn resolve_struct_in_env_fills_fields_from_env() {
+        // env.structs["Item"] = { name: String, price: Int }
+        // 输入 ty = Struct(Item { fields: {} })（来自 type_expr_to_type 的外壳）
+        // 期望：返回带字段的 Struct
+        let env = env_with_struct("Item", vec![
+            ("name", prim("String")),
+            ("price", prim("Int")),
+        ]);
+        let ty = empty_struct("Item");
+        let resolved = resolve_struct_in_env(&ty, &env);
+        match resolved {
+            Type::Struct(s) => {
+                assert_eq!(s.fields.len(), 2);
+                assert!(s.fields.contains_key("name"));
+                assert!(s.fields.contains_key("price"));
+            }
+            other => panic!("expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_struct_in_env_passes_through_when_not_in_env() {
+        // env 无 Item，输入空 Struct(Item)，期望原样返回
+        let env = empty_env();
+        let ty = empty_struct("Item");
+        let resolved = resolve_struct_in_env(&ty, &env);
+        match resolved {
+            Type::Struct(s) => {
+                assert_eq!(s.name, "Item");
+                assert!(s.fields.is_empty());
+            }
+            other => panic!("expected Struct, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_struct_in_env_passes_through_non_struct() {
+        let env = empty_env();
+        let ty = prim("Int");
+        let resolved = resolve_struct_in_env(&ty, &env);
+        assert_eq!(resolved, prim("Int"));
     }
 }
