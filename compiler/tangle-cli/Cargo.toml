@@ -108,6 +108,22 @@ path = "tests/v06_phase6/ir_param_types.rs"
 name = "phase6_return_type_inference"
 path = "tests/v06_phase6/return_type_inference.rs"
 
+[[test]]
+name = "phase6d_if_narrowing"
+path = "tests/v06_phase6/if_narrowing.rs"
+
+[[test]]
+name = "phase6d_destructure"
+path = "tests/v06_phase6/destructure.rs"
+
+[[test]]
+name = "phase6d_option_match"
+path = "tests/v06_phase6/option_match.rs"
+
+[[test]]
+name = "phase6d_invariants"
+path = "tests/v06_phase6/invariants.rs"
+
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
 clap = { version = "4", features = ["derive"] }
