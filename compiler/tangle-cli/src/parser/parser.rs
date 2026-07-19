@@ -11,6 +11,10 @@ fn bp_of(kind: TokenKind) -> u8 {
         TokenKind::Or => 1,
         TokenKind::And => 2,
         TokenKind::EqEq | TokenKind::Neq => 3,
+        // `is` binds at equality precedence so `x is Some && y is None`
+        // parses as `(x is Some) && (y is None)` and `x + 1 is Some`
+        // parses as `(x + 1) is Some`.
+        TokenKind::Is => 3,
         TokenKind::Lt | TokenKind::Gt | TokenKind::Lte | TokenKind::Gte => 4,
         TokenKind::Plus | TokenKind::Minus => 5,
         TokenKind::Star | TokenKind::Slash | TokenKind::Percent => 6,
@@ -176,6 +180,17 @@ impl<'a> ParserState<'a> {
                     lhs = Expr::Pipe(PipeExpr {
                         left: Box::new(lhs),
                         right: Box::new(rhs),
+                        span,
+                    });
+                }
+                TokenKind::Is => {
+                    self.advance(); // consume 'is'
+                    let pattern = self.parse_is_pattern()?;
+                    let end_span = self.tokens[self.pos - 1].span.clone();
+                    let span = self.merge_span(&self.span_of_expr(&lhs), &end_span);
+                    lhs = Expr::Is(IsExpr {
+                        expr: Box::new(lhs),
+                        pattern,
                         span,
                     });
                 }
@@ -619,6 +634,217 @@ impl<'a> ParserState<'a> {
     }
 
     // ============================================================
+    // Phase 6d: `is` pattern + let Variant/Record destructuring
+    // ============================================================
+
+    /// Parse the pattern following `is`: `VariantName` or `VariantName(binding)`.
+    fn parse_is_pattern(&mut self) -> Option<Pattern> {
+        let name_tok = self.advance();
+        if name_tok.kind != TokenKind::Identifier {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_PARSE_ERROR".into(),
+                message: "Expected variant name after 'is'".into(),
+                span: name_tok.span.clone(),
+            });
+            return None;
+        }
+        let binding = if self.peek().kind == TokenKind::LParen {
+            self.advance(); // consume '('
+            let bind_tok = self.advance();
+            if bind_tok.kind != TokenKind::Identifier {
+                self.diagnostics.push(TangleDiagnostic {
+                    code: "TANGLE_PARSE_ERROR".into(),
+                    message: "Expected binding name in is-pattern".into(),
+                    span: bind_tok.span.clone(),
+                });
+                return None;
+            }
+            if self.peek().kind != TokenKind::RParen {
+                self.diagnostics.push(TangleDiagnostic {
+                    code: "TANGLE_PARSE_ERROR".into(),
+                    message: "Expected ')' after is-pattern binding".into(),
+                    span: self.peek().span.clone(),
+                });
+                return None;
+            }
+            self.advance(); // consume ')'
+            Some(bind_tok.lexeme.clone())
+        } else {
+            None
+        };
+        Some(Pattern::Variant {
+            name: name_tok.lexeme.clone(),
+            binding,
+        })
+    }
+
+    /// Parse `let { field, field: local, ... } = expr`.
+    /// The `let` keyword has already been consumed; `span` is the span of `let`.
+    fn parse_let_record(&mut self, span: SourceSpan) -> Option<Stmt> {
+        self.advance(); // consume '{'
+        let mut fields = vec![];
+        if self.peek().kind == TokenKind::RBrace {
+            self.advance();
+        } else {
+            loop {
+                let name_tok = self.advance();
+                if name_tok.kind != TokenKind::Identifier {
+                    self.diagnostics.push(TangleDiagnostic {
+                        code: "TANGLE_PARSE_ERROR".into(),
+                        message: "Expected field name in let record pattern".into(),
+                        span: name_tok.span.clone(),
+                    });
+                    return None;
+                }
+                let local_var = if self.peek().kind == TokenKind::Colon {
+                    self.advance(); // consume ':'
+                    let local_tok = self.advance();
+                    if local_tok.kind != TokenKind::Identifier {
+                        self.diagnostics.push(TangleDiagnostic {
+                            code: "TANGLE_PARSE_ERROR".into(),
+                            message: "Expected local binding name after ':'".into(),
+                            span: local_tok.span.clone(),
+                        });
+                        return None;
+                    }
+                    local_tok.lexeme.clone()
+                } else {
+                    name_tok.lexeme.clone()
+                };
+                fields.push((name_tok.lexeme.clone(), local_var));
+                if self.peek().kind == TokenKind::Comma {
+                    self.advance();
+                    if self.peek().kind == TokenKind::RBrace {
+                        self.advance();
+                        break;
+                    }
+                    continue;
+                }
+                if self.peek().kind == TokenKind::RBrace {
+                    self.advance();
+                    break;
+                }
+                self.diagnostics.push(TangleDiagnostic {
+                    code: "TANGLE_PARSE_ERROR".into(),
+                    message: "Expected ',' or '}' in let record pattern".into(),
+                    span: self.peek().span.clone(),
+                });
+                return None;
+            }
+        }
+        if self.peek().kind != TokenKind::Eq {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_PARSE_ERROR".into(),
+                message: "Expected '=' after let record pattern".into(),
+                span: self.peek().span.clone(),
+            });
+            return None;
+        }
+        self.advance(); // consume '='
+        let expr = self.parse_expression(0)?;
+        let end_span = self.span_of_expr(&expr);
+        let span = self.merge_span(&span, &end_span);
+        Some(Stmt::LetRecord(LetRecordStmt {
+            fields,
+            expr: Box::new(expr),
+            span,
+        }))
+    }
+
+    /// Parse `let Variant(binding) = expr else { ... }` (binding optional).
+    /// The `let` keyword has already been consumed; `span` is the span of `let`.
+    fn parse_let_variant(&mut self, span: SourceSpan) -> Option<Stmt> {
+        let name_tok = self.advance();
+        if name_tok.kind != TokenKind::Identifier {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_PARSE_ERROR".into(),
+                message: "Expected variant name in let variant pattern".into(),
+                span: name_tok.span.clone(),
+            });
+            return None;
+        }
+        let variant_name = name_tok.lexeme.clone();
+        let binding = if self.peek().kind == TokenKind::LParen {
+            self.advance(); // consume '('
+            let bind_tok = self.advance();
+            if bind_tok.kind != TokenKind::Identifier {
+                self.diagnostics.push(TangleDiagnostic {
+                    code: "TANGLE_PARSE_ERROR".into(),
+                    message: "Expected binding name in variant pattern".into(),
+                    span: bind_tok.span.clone(),
+                });
+                return None;
+            }
+            if self.peek().kind != TokenKind::RParen {
+                self.diagnostics.push(TangleDiagnostic {
+                    code: "TANGLE_PARSE_ERROR".into(),
+                    message: "Expected ')' after variant binding".into(),
+                    span: self.peek().span.clone(),
+                });
+                return None;
+            }
+            self.advance(); // consume ')'
+            Some(bind_tok.lexeme.clone())
+        } else {
+            None
+        };
+        if self.peek().kind != TokenKind::Eq {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_PARSE_ERROR".into(),
+                message: "Expected '=' after let variant pattern".into(),
+                span: self.peek().span.clone(),
+            });
+            return None;
+        }
+        self.advance(); // consume '='
+        let expr = self.parse_expression(0)?;
+        if self.peek().kind != TokenKind::Else {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_REFUTABLE_LET_REQUIRES_ELSE".into(),
+                message: "refutable let pattern requires `else { ... }` branch".into(),
+                span: self.peek().span.clone(),
+            });
+            return None;
+        }
+        self.advance(); // consume 'else'
+        if self.peek().kind != TokenKind::LBrace {
+            self.diagnostics.push(TangleDiagnostic {
+                code: "TANGLE_PARSE_ERROR".into(),
+                message: "Expected '{' after 'else' in let variant".into(),
+                span: self.peek().span.clone(),
+            });
+            return None;
+        }
+        self.advance(); // consume '{'
+        let mut else_branch = vec![];
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            if let Some(stmt) = self.parse_statement() {
+                else_branch.push(stmt);
+            } else {
+                // Error recovery: skip to next '}' or EOF
+                while self.peek().kind != TokenKind::RBrace
+                    && self.peek().kind != TokenKind::Eof
+                {
+                    self.advance();
+                }
+                break;
+            }
+        }
+        if self.peek().kind == TokenKind::RBrace {
+            self.advance(); // consume '}'
+        }
+        let end_span = self.tokens[self.pos - 1].span.clone();
+        let span = self.merge_span(&span, &end_span);
+        Some(Stmt::LetVariant(LetVariantStmt {
+            variant_name,
+            binding,
+            expr: Box::new(expr),
+            else_branch,
+            span,
+        }))
+    }
+
+    // ============================================================
     // Block or expression (for if branches)
     // ============================================================
 
@@ -690,6 +916,57 @@ impl<'a> ParserState<'a> {
             }
             TokenKind::Let | TokenKind::Const => {
                 let kw_tok = self.advance();
+                // Phase 6d: `let { fields } = expr` and `let Variant(...) = expr else { ... }`.
+                // Only `let` (not `const`) supports these refutable/record destructuring forms.
+                if kw_tok.kind == TokenKind::Let {
+                    if self.peek().kind == TokenKind::LBrace {
+                        let stmt = self.parse_let_record(kw_tok.span.clone())?;
+                        self.skip_semicolon();
+                        return Some(stmt);
+                    }
+                    // `let Identifier (` — definitely a variant pattern with binding.
+                    if self.peek().kind == TokenKind::Identifier
+                        && self
+                            .tokens
+                            .get(self.pos + 1)
+                            .map_or(false, |t| t.kind == TokenKind::LParen)
+                    {
+                        let stmt = self.parse_let_variant(kw_tok.span.clone())?;
+                        self.skip_semicolon();
+                        return Some(stmt);
+                    }
+                    // `let Identifier = expr else { ... }` is ambiguous with regular
+                    // `let Identifier = expr` until we see (or don't see) `else`.
+                    // Speculatively try variant parsing; if it fails ONLY due to a
+                    // missing `else` branch, backtrack and parse as a regular let.
+                    if self.peek().kind == TokenKind::Identifier
+                        && self
+                            .tokens
+                            .get(self.pos + 1)
+                            .map_or(false, |t| t.kind == TokenKind::Eq)
+                    {
+                        let saved_pos = self.pos;
+                        let saved_diags_len = self.diagnostics.len();
+                        if let Some(stmt) = self.parse_let_variant(kw_tok.span.clone()) {
+                            self.skip_semicolon();
+                            return Some(stmt);
+                        }
+                        let failed_with_missing_else = self
+                            .diagnostics
+                            .get(saved_diags_len)
+                            .map_or(false, |d| {
+                                d.code == "TANGLE_REFUTABLE_LET_REQUIRES_ELSE"
+                            });
+                        if failed_with_missing_else {
+                            self.pos = saved_pos;
+                            self.diagnostics.truncate(saved_diags_len);
+                            // Fall through to regular let path below.
+                        } else {
+                            // Different parse error — propagate.
+                            return None;
+                        }
+                    }
+                }
                 let name_tok = self.advance();
                 if name_tok.kind != TokenKind::Identifier {
                     self.diagnostics.push(TangleDiagnostic {
@@ -1192,5 +1469,136 @@ mod tests {
         assert_eq!(body.statements.len(), 2);
         assert!(matches!(body.statements[0], Stmt::Let(_)));
         assert!(matches!(body.statements[1], Stmt::Return(_)));
+    }
+}
+
+// ============================================================
+// Phase 6d: is expression + let Variant/Record parsing
+// ============================================================
+
+#[cfg(test)]
+mod phase6d_parser_tests {
+    use super::*;
+    use crate::parser::lexer::tokenize;
+
+    fn parse_expr(src: &str) -> Expr {
+        let (tokens, _diags) = tokenize(src, "test.md");
+        let mut p = ParserState::new(&tokens);
+        p.parse_expression(0).expect("expected expression to parse")
+    }
+
+    fn parse_stmt(src: &str) -> Stmt {
+        let (tokens, _diags) = tokenize(src, "test.md");
+        let mut p = ParserState::new(&tokens);
+        p.parse_statement().expect("expected statement to parse")
+    }
+
+    #[test]
+    fn parse_is_variant() {
+        let e = parse_expr("x is Some");
+        match e {
+            Expr::Is(is_e) => {
+                assert!(
+                    matches!(
+                        is_e.pattern,
+                        Pattern::Variant { ref name, binding: None } if name == "Some"
+                    ),
+                    "expected Pattern::Variant {{ name: \"Some\", binding: None }}, got {:?}",
+                    is_e.pattern
+                );
+            }
+            _ => panic!("expected Is expr, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn parse_is_variant_binding() {
+        let e = parse_expr("x is Some(y)");
+        match e {
+            Expr::Is(is_e) => {
+                assert!(
+                    matches!(
+                        is_e.pattern,
+                        Pattern::Variant { ref name, binding: Some(ref b) }
+                            if name == "Some" && b == "y"
+                    ),
+                    "expected Pattern::Variant {{ name: \"Some\", binding: Some(\"y\") }}, got {:?}",
+                    is_e.pattern
+                );
+            }
+            _ => panic!("expected Is expr, got {:?}", e),
+        }
+    }
+
+    #[test]
+    fn parse_let_variant_with_else() {
+        let s = parse_stmt("let Some(y) = x else { return 0 }");
+        match s {
+            Stmt::LetVariant(v) => {
+                assert_eq!(v.variant_name, "Some");
+                assert_eq!(v.binding, Some("y".to_string()));
+                assert_eq!(v.else_branch.len(), 1);
+            }
+            _ => panic!("expected LetVariant stmt, got {:?}", s),
+        }
+    }
+
+    #[test]
+    fn parse_let_variant_none_no_binding() {
+        let s = parse_stmt("let None = x else { return 0 }");
+        match s {
+            Stmt::LetVariant(v) => {
+                assert_eq!(v.variant_name, "None");
+                assert!(v.binding.is_none());
+            }
+            _ => panic!("expected LetVariant stmt, got {:?}", s),
+        }
+    }
+
+    #[test]
+    fn parse_let_record_simple() {
+        let s = parse_stmt("let { ok, err } = r");
+        match s {
+            Stmt::LetRecord(r) => {
+                assert_eq!(r.fields.len(), 2);
+                assert_eq!(r.fields[0], ("ok".to_string(), "ok".to_string()));
+                assert_eq!(r.fields[1], ("err".to_string(), "err".to_string()));
+            }
+            _ => panic!("expected LetRecord stmt, got {:?}", s),
+        }
+    }
+
+    #[test]
+    fn parse_let_record_renamed() {
+        let s = parse_stmt("let { ok: o, err: e } = r");
+        match s {
+            Stmt::LetRecord(r) => {
+                assert_eq!(r.fields[0], ("ok".to_string(), "o".to_string()));
+                assert_eq!(r.fields[1], ("err".to_string(), "e".to_string()));
+            }
+            _ => panic!("expected LetRecord stmt, got {:?}", s),
+        }
+    }
+
+    #[test]
+    fn parse_let_variant_without_else_errors() {
+        // parser 应拒绝 refutable let 缺少 else，报 TANGLE_REFUTABLE_LET_REQUIRES_ELSE
+        let (tokens, _diags) = tokenize("let Some(y) = x", "test.md");
+        let mut p = ParserState::new(&tokens);
+        let result = p.parse_statement();
+        assert!(
+            result.is_none(),
+            "expected parser to reject refutable let without else, got {:?}",
+            result
+        );
+        let has_err = p
+            .diagnostics
+            .iter()
+            .any(|d| d.code.contains("TANGLE_REFUTABLE_LET_REQUIRES_ELSE"));
+        assert!(
+            has_err,
+            "expected diagnostic code TANGLE_REFUTABLE_LET_REQUIRES_ELSE, got: {:?}",
+            p.diagnostics
+        );
     }
 }
