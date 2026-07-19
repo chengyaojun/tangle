@@ -174,14 +174,17 @@ pub struct PanicExpr {
     pub span: SourceSpan,
 }
 
-/// Pattern 子树：用于 `is` 表达式与 refutable let。
-/// Phase 6d 仅支持 variant 形式；复合模式（And/Guard）推迟到 6e。
+/// Pattern 子树：用于 `is` 表达式。
+///
+/// Phase 6d 仅支持 variant 形式（与 `is` 语法匹配）。
+/// `LetVariantStmt` 不使用 Pattern（直接用独立字段）。
+/// 未来若需 `is Some(y) and y > 0` 复合模式，可扩展 `Pattern::And`/`Pattern::Guard`。
+///
+/// 表示与 `MatchPattern::Variant` 对齐，便于后续 IR lowering 转换。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
-    /// `is Some` —— 仅测试 variant 名，无 binding
-    Variant { name: String },
-    /// `is Some(y)` —— 测试 variant 名并绑定 payload
-    VariantBinding { name: String, binding: String },
+    /// `is Some` 或 `is Some(y)` —— 测试 variant 名，可选 binding
+    Variant { name: String, binding: Option<String> },
 }
 
 /// 类型测试表达式: `x is Pattern`
@@ -419,26 +422,21 @@ mod phase6d_ast_tests {
 
     #[test]
     fn pattern_variant_construction() {
-        let p = Pattern::Variant { name: "Some".to_string() };
-        match p {
-            Pattern::Variant { name } => assert_eq!(name, "Some"),
-            _ => panic!("expected Variant"),
-        }
+        let p = Pattern::Variant { name: "Some".to_string(), binding: None };
+        let Pattern::Variant { name, binding } = p;
+        assert_eq!(name, "Some");
+        assert_eq!(binding, None);
     }
 
     #[test]
     fn pattern_variant_binding_construction() {
-        let p = Pattern::VariantBinding {
+        let p = Pattern::Variant {
             name: "Some".to_string(),
-            binding: "y".to_string(),
+            binding: Some("y".to_string()),
         };
-        match p {
-            Pattern::VariantBinding { name, binding } => {
-                assert_eq!(name, "Some");
-                assert_eq!(binding, "y");
-            }
-            _ => panic!("expected VariantBinding"),
-        }
+        let Pattern::Variant { name, binding } = p;
+        assert_eq!(name, "Some");
+        assert_eq!(binding, Some("y".to_string()));
     }
 
     #[test]
@@ -448,13 +446,13 @@ mod phase6d_ast_tests {
                 name: "x".to_string(),
                 span: dummy_span(),
             })),
-            pattern: Pattern::VariantBinding {
+            pattern: Pattern::Variant {
                 name: "Some".to_string(),
-                binding: "y".to_string(),
+                binding: Some("y".to_string()),
             },
             span: dummy_span(),
         };
-        assert!(matches!(e.pattern, Pattern::VariantBinding { .. }));
+        assert!(matches!(e.pattern, Pattern::Variant { binding: Some(_), .. }));
     }
 
     #[test]
