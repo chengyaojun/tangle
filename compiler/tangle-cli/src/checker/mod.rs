@@ -10,6 +10,7 @@ pub mod panic_check;
 pub mod check_module;
 pub mod unify;
 pub mod infer_return_types;
+pub mod option_view;
 
 pub use types::*;
 pub use builtins::*;
