@@ -229,8 +229,38 @@ fn check_stmt(stmt: &Stmt, env: &mut TypeEnv, diags: &mut Vec<TangleDiagnostic>)
                 });
             }
         }
-        // TODO(Phase 6d): Task 7 will implement LetRecord.
-        Stmt::LetRecord(_) => {}
+        Stmt::LetRecord(s) => {
+            let (matched_ty, mut d) = check_expression(&s.expr, env);
+            diags.append(&mut d);
+
+            match matched_ty {
+                Type::Struct(ref struct_ty) => {
+                    for (field_name, local_var) in &s.fields {
+                        if let Some(field_ty) = struct_ty.fields.get(field_name) {
+                            env.variables.insert(local_var.clone(), field_ty.clone());
+                        } else {
+                            diags.push(TangleDiagnostic {
+                                code: "TANGLE_STRUCT_FIELD_NOT_FOUND".into(),
+                                message: format!("Struct {} has no field '{}'", struct_ty.name, field_name),
+                                span: s.span.clone(),
+                            });
+                        }
+                    }
+                }
+                Type::Any => {
+                    for (_, local_var) in &s.fields {
+                        env.variables.insert(local_var.clone(), Type::Any);
+                    }
+                }
+                other => {
+                    diags.push(TangleDiagnostic {
+                        code: "TANGLE_DESTRUCTURE_NOT_STRUCT".into(),
+                        message: format!("Cannot destructure {} as record (expected struct)", type_display(&other)),
+                        span: s.span.clone(),
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -351,6 +381,146 @@ mod phase6d_let_variant_tests {
         assert!(
             diags.iter().any(|d| d.code == "TANGLE_PATTERN_VARIANT_NOT_FOUND"),
             "expected TANGLE_PATTERN_VARIANT_NOT_FOUND diagnostic, got: {:?}", diags
+        );
+    }
+}
+
+#[cfg(test)]
+mod phase6d_let_record_tests {
+    use super::*;
+    use crate::ast::{Expr, IdentifierExpr, LetRecordStmt};
+    use crate::model::SourceSpan;
+    use std::collections::HashMap;
+
+    fn span() -> SourceSpan {
+        SourceSpan { file: "".into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 }
+    }
+
+    fn prim(name: &str) -> Type {
+        Type::Primitive(PrimitiveType { name: name.to_string() })
+    }
+
+    fn int_t() -> Type {
+        prim("Int")
+    }
+
+    fn string_t() -> Type {
+        prim("String")
+    }
+
+    fn ident_expr(name: &str) -> Expr {
+        Expr::Identifier(IdentifierExpr { name: name.to_string(), span: span() })
+    }
+
+    fn env_with_var(name: &str, ty: Type) -> TypeEnv {
+        let mut vars = HashMap::new();
+        vars.insert(name.to_string(), ty);
+        TypeEnv {
+            variables: vars,
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    fn item_struct() -> Type {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), string_t());
+        fields.insert("price".to_string(), int_t());
+        Type::Struct(StructType {
+            name: "Item".to_string(),
+            fields,
+            methods: HashMap::new(),
+        })
+    }
+
+    fn let_record_stmt(fields: Vec<(&str, &str)>, target: Expr) -> Stmt {
+        Stmt::LetRecord(LetRecordStmt {
+            fields: fields
+                .into_iter()
+                .map(|(f, v)| (f.to_string(), v.to_string()))
+                .collect(),
+            expr: Box::new(target),
+            span: span(),
+        })
+    }
+
+    #[test]
+    fn let_record_injects_all_fields() {
+        // r: Item { name: String, price: Int }, `let { name: n, price: p } = r`
+        // 期望: n: String, p: Int 已注入 env，无诊断
+        let mut env = env_with_var("r", item_struct());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_record_stmt(
+            vec![("name", "n"), ("price", "p")],
+            ident_expr("r"),
+        );
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        let n_ty = env.variables.get("n").expect("expected n to be injected into env");
+        assert!(
+            matches!(n_ty, Type::Primitive(PrimitiveType { ref name }) if name == "String"),
+            "expected n: String, got {:?}", n_ty
+        );
+        let p_ty = env.variables.get("p").expect("expected p to be injected into env");
+        assert!(
+            matches!(p_ty, Type::Primitive(PrimitiveType { ref name }) if name == "Int"),
+            "expected p: Int, got {:?}", p_ty
+        );
+    }
+
+    #[test]
+    fn let_record_emits_diag_for_missing_field() {
+        // r: Item { name, price }, `let { nonexistent: x } = r`
+        // 期望: TANGLE_STRUCT_FIELD_NOT_FOUND 诊断
+        let mut env = env_with_var("r", item_struct());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_record_stmt(
+            vec![("nonexistent", "x")],
+            ident_expr("r"),
+        );
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_STRUCT_FIELD_NOT_FOUND"),
+            "expected TANGLE_STRUCT_FIELD_NOT_FOUND diagnostic, got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn let_record_emits_diag_for_non_struct() {
+        // r: Int (not Struct), `let { x: y } = r`
+        // 期望: TANGLE_DESTRUCTURE_NOT_STRUCT 诊断
+        let mut env = env_with_var("r", int_t());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_record_stmt(
+            vec![("x", "y")],
+            ident_expr("r"),
+        );
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_DESTRUCTURE_NOT_STRUCT"),
+            "expected TANGLE_DESTRUCTURE_NOT_STRUCT diagnostic, got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn let_record_with_any_binds_all_to_any() {
+        // r: Any, `let { ok: o } = r`
+        // 期望: o: Any，无诊断
+        let mut env = env_with_var("r", Type::Any);
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_record_stmt(
+            vec![("ok", "o")],
+            ident_expr("r"),
+        );
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        let o_ty = env.variables.get("o").expect("expected o to be injected into env");
+        assert!(
+            matches!(*o_ty, Type::Any),
+            "expected o: Any, got {:?}", o_ty
         );
     }
 }
