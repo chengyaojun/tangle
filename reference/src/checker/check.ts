@@ -1,10 +1,11 @@
-import type { Expr } from "../ast.js";
+import type { Expr, IsExpr } from "../ast.js";
 import type { TangleDiagnostic } from "../model.js";
 import type { Type, StructType } from "./types.js";
 import type { TypeEnv } from "./env.js";
 import { typesEqual } from "./types.js";
 import { unify, substitute, type Substitution, unifyAll, unifyPair } from "./unify.js";
 import { checkMatchExhaustiveness, findVariantByName, bindingTypeOf } from "./match.js";
+import { asSumView, resolveStructInEnv } from "./optionView.js";
 
 export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnostic[]] {
   const diags: TangleDiagnostic[] = [];
@@ -139,7 +140,11 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "if": {
       const [, condDiags] = checkExpression(expr.condition, env);
       diags.push(...condDiags);
-      const [thenType, thenDiags] = checkExpression(expr.thenBranch, env);
+      // Phase 6d: 若 condition 是 IsExpr，在 then 分支注入收窄后的 binding 类型
+      const thenEnv: TypeEnv = expr.condition.kind === "is"
+        ? narrowEnvForIs(env, expr.condition)
+        : env;
+      const [thenType, thenDiags] = checkExpression(expr.thenBranch, thenEnv);
       diags.push(...thenDiags);
       if (expr.elseBranch) {
         const [elseType, elseDiags] = checkExpression(expr.elseBranch, env);
@@ -174,6 +179,8 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
     case "match": {
       const [matchType, matchDiags] = checkExpression(expr.expr, env);
       diags.push(...matchDiags);
+      // Phase 6d: 使用 asSumView 将 Option<T> 等 genericInstance 视作 Sum 进行收窄
+      const sumView = asSumView(matchType);
       // Type-check each arm body with narrowed binding type
       const armTypes: Type[] = [];
       for (const arm of expr.arms) {
@@ -182,11 +189,12 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
           ...env,
           variables: { ...env.variables },
         };
-        if (matchType.kind === "sum" && arm.pattern.kind === "variantPattern") {
-          const variant = findVariantByName(matchType, arm.pattern.name);
+        if (sumView && arm.pattern.kind === "variantPattern") {
+          const variant = findVariantByName(sumView, arm.pattern.name);
           if (variant && arm.pattern.binding) {
-            const bindType = bindingTypeOf(variant);
-            armEnv.variables[arm.pattern.binding] = bindType;
+            const rawTy = bindingTypeOf(variant);
+            const bindTy = resolveStructInEnv(rawTy, env);
+            armEnv.variables[arm.pattern.binding] = bindTy;
           }
         }
         const [armType, armDiags] = checkExpression(arm.body, armEnv);
@@ -197,8 +205,8 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
       const patternNames = expr.arms.map((a) =>
         a.pattern.kind === "variantPattern" ? a.pattern.name : "_"
       );
-      if (matchType.kind === "sum") {
-        const missing = checkMatchExhaustiveness(matchType, patternNames);
+      if (sumView) {
+        const missing = checkMatchExhaustiveness(sumView, patternNames);
         for (const m of missing) {
           diags.push({
             code: "TANGLE_TYPE_MATCH_NOT_EXHAUSTIVE",
@@ -236,7 +244,58 @@ export function checkExpression(expr: Expr, env: TypeEnv): [Type, TangleDiagnost
       return [{ kind: "primitive", name: "Bool" }, diags];
     }
 
+    case "is": {
+      // Phase 6d: IsExpr 类型收窄 —— `expr is Pattern`
+      // 返回 Bool；若 scrutinee 不是 sum-compatible 类型则报 NOT_NARROWABLE；
+      // 若 pattern 命名 variant 不存在则报 VARIANT_NOT_FOUND。
+      const [matchedTy, innerDiags] = checkExpression(expr.expr, env);
+      diags.push(...innerDiags);
+      const resultTy: Type = { kind: "primitive", name: "Bool" };
+      const sum = asSumView(matchedTy);
+      if (sum) {
+        if (expr.pattern.kind === "variant") {
+          const variantTy = findVariantByName(sum, expr.pattern.name);
+          if (!variantTy) {
+            diags.push({
+              code: "TANGLE_PATTERN_VARIANT_NOT_FOUND",
+              message: `Variant '${expr.pattern.name}' not found in type`,
+              span: expr.span,
+            });
+          }
+        }
+        // wildcard pattern 总是合法
+      } else {
+        diags.push({
+          code: "TANGLE_PATTERN_NOT_NARROWABLE",
+          message: "Cannot narrow type",
+          span: expr.span,
+        });
+      }
+      return [resultTy, diags];
+    }
+
     default:
       return [{ kind: "primitive", name: "String" }, diags];
   }
+}
+
+/// Phase 6d: 为 IsExpr 构造收窄后的局部环境。
+/// 若 IsExpr 形如 `x is Some(y)` 且 x 类型可视为 Sum（含 Option<T>），
+/// 在 then 分支将 `y` 注入为 Some payload 类型（经 resolveStructInEnv 补全字段）。
+function narrowEnvForIs(env: TypeEnv, isExpr: IsExpr): TypeEnv {
+  const narrowed: TypeEnv = {
+    ...env,
+    variables: { ...env.variables },
+  };
+  const [matchedTy] = checkExpression(isExpr.expr, env);
+  const sum = asSumView(matchedTy);
+  if (sum && isExpr.pattern.kind === "variant" && isExpr.pattern.binding) {
+    const variantTy = findVariantByName(sum, isExpr.pattern.name);
+    if (variantTy) {
+      const rawTy = bindingTypeOf(variantTy);
+      const bindTy = resolveStructInEnv(rawTy, env);
+      narrowed.variables[isExpr.pattern.binding] = bindTy;
+    }
+  }
+  return narrowed;
 }

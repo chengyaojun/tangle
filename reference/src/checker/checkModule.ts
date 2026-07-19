@@ -1,5 +1,5 @@
 import type { TangleModule, TangleDiagnostic } from "../model.js";
-import type { ParsedCodeBlock } from "../ast.js";
+import type { ParsedCodeBlock, Stmt } from "../ast.js";
 import type { TypeEnv } from "./env.js";
 import type { Type } from "./types.js";
 import { tokenize } from "../parser/lexer.js";
@@ -11,6 +11,8 @@ import { ErrorRegistry } from "./errors.js";
 import { parseTypeExpr } from "../parser/typeParser.js";
 import { registerBuiltins } from "./builtins.js";
 import { inferReturnTypes } from "./inferReturnTypes.js";
+import { asSumView, resolveStructInEnv } from "./optionView.js";
+import { findVariantByName, bindingTypeOf } from "./match.js";
 
 export type CheckedModule = TangleModule & {
   parsedBlocks: ParsedCodeBlock[];
@@ -68,13 +70,12 @@ export function checkModule(module: TangleModule): CheckedModule {
       if (param.typeName) {
         try {
           const te = parseTypeExpr(param.typeName, param.span.file);
-          let paramType = typeExprToType(te);
-          // If it's a struct name, look up full definition from env (with fields/methods)
-          if (paramType.kind === "struct") {
-            const fullStruct = env.structs[paramType.name];
-            if (fullStruct) paramType = fullStruct;
-          }
-          checkEnv.variables[param.name] = paramType;
+          const paramType = typeExprToType(te);
+          // Phase 6d: 使用 resolveStructInEnv 补全结构体字段（镜像 Rust 修复）
+          // 背景：typeExprToType 解析 `Item` 时返回空字段外壳 Struct { name: "Item", fields: {} }。
+          // 真实带字段的定义位于 env.structs。此处统一通过 resolveStructInEnv 补全，
+          // 修复 examples/account.tangle.md 风格的“方法参数结构体字段为空”的 bug。
+          checkEnv.variables[param.name] = resolveStructInEnv(paramType, env);
         } catch {
           checkEnv.variables[param.name] = { kind: "any" };
         }
@@ -84,19 +85,7 @@ export function checkModule(module: TangleModule): CheckedModule {
     }
 
     for (const stmt of parsed.body.statements) {
-      if (stmt.kind === "expression") {
-        const [, diags] = checkExpression(stmt.expr, checkEnv);
-        allDiagnostics.push(...diags);
-      } else if (stmt.kind === "return" && stmt.value) {
-        const [, diags] = checkExpression(stmt.value, checkEnv);
-        allDiagnostics.push(...diags);
-      } else if (stmt.kind === "let" || stmt.kind === "const") {
-        const [type, diags] = checkExpression(stmt.value, checkEnv);
-        allDiagnostics.push(...diags);
-        if (diags.length === 0) {
-          checkEnv.variables[stmt.name] = type;
-        }
-      }
+      checkStmt(stmt, checkEnv, allDiagnostics);
     }
   }
 
@@ -113,4 +102,97 @@ export function checkModule(module: TangleModule): CheckedModule {
     returnTypes,
     diagnostics: allDiagnostics
   };
+}
+
+/// Phase 6d: 抽取的语句检查函数。
+/// - 处理原有 expression / return / let / const
+/// - 新增 letVariant / letRecord（refutable let / record destructuring）
+/// 镜像 Rust crate::checker::check_module::check_stmt。
+export function checkStmt(stmt: Stmt, env: TypeEnv, diags: TangleDiagnostic[]): void {
+  switch (stmt.kind) {
+    case "expression": {
+      const [, d] = checkExpression(stmt.expr, env);
+      diags.push(...d);
+      break;
+    }
+    case "return": {
+      if (stmt.value) {
+        const [, d] = checkExpression(stmt.value, env);
+        diags.push(...d);
+      }
+      break;
+    }
+    case "let":
+    case "const": {
+      const [type, d] = checkExpression(stmt.value, env);
+      diags.push(...d);
+      if (d.length === 0) {
+        env.variables[stmt.name] = type;
+      }
+      break;
+    }
+    case "letVariant": {
+      // Phase 6d: `let Variant(binding) = expr else { ... }`
+      const [matchedTy, d] = checkExpression(stmt.expr, env);
+      diags.push(...d);
+      const sum = asSumView(matchedTy);
+      if (sum) {
+        const variantTy = findVariantByName(sum, stmt.variantName);
+        if (variantTy) {
+          if (stmt.binding) {
+            const rawTy = bindingTypeOf(variantTy);
+            const bindTy = resolveStructInEnv(rawTy, env);
+            env.variables[stmt.binding] = bindTy;
+          }
+          for (const s of stmt.elseBranch) checkStmt(s, env, diags);
+        } else {
+          diags.push({
+            code: "TANGLE_PATTERN_VARIANT_NOT_FOUND",
+            message: `Variant '${stmt.variantName}' not found in type`,
+            span: stmt.span,
+          });
+        }
+      } else {
+        diags.push({
+          code: "TANGLE_PATTERN_NOT_NARROWABLE",
+          message: "Cannot destructure type",
+          span: stmt.span,
+        });
+      }
+      break;
+    }
+    case "letRecord": {
+      // Phase 6d: `let { field: local, ... } = expr`
+      const [matchedTy, d] = checkExpression(stmt.expr, env);
+      diags.push(...d);
+      switch (matchedTy.kind) {
+        case "struct":
+          for (const [field, local] of stmt.fields) {
+            const fieldTy = matchedTy.fields[field];
+            if (fieldTy) {
+              env.variables[local] = fieldTy;
+            } else {
+              diags.push({
+                code: "TANGLE_STRUCT_FIELD_NOT_FOUND",
+                message: `Struct ${matchedTy.name} has no field '${field}'`,
+                span: stmt.span,
+              });
+            }
+          }
+          break;
+        case "any":
+          for (const [, local] of stmt.fields) {
+            env.variables[local] = { kind: "any" };
+          }
+          break;
+        default:
+          diags.push({
+            code: "TANGLE_DESTRUCTURE_NOT_STRUCT",
+            message: "Cannot destructure as record (expected struct)",
+            span: stmt.span,
+          });
+      }
+      break;
+    }
+  }
 }
