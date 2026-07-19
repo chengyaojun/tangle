@@ -5,6 +5,9 @@ use crate::checker::env::{ReceiverContext, TypeEnv};
 use crate::checker::errors::ErrorRegistry;
 use crate::checker::resolve::{find_receiver_heading, resolve_types};
 use crate::checker::check::check_expression;
+use crate::checker::option_view::as_sum_view;
+use crate::checker::match_check::{find_variant_by_name, binding_type_of};
+use crate::checker::check::type_display;
 use crate::parser::lexer::tokenize;
 use crate::parser::parser::parse_code_body;
 use std::collections::HashMap;
@@ -149,32 +152,7 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         }
 
         for stmt in &block.body.statements {
-            match stmt {
-                Stmt::Let(s) => {
-                    let (val_ty, mut val_diags) = check_expression(&s.value, &block_env);
-                    diagnostics.append(&mut val_diags);
-                    block_env.variables.insert(s.name.clone(), val_ty);
-                }
-                Stmt::Const(s) => {
-                    let (val_ty, mut val_diags) = check_expression(&s.value, &block_env);
-                    diagnostics.append(&mut val_diags);
-                    block_env.variables.insert(s.name.clone(), val_ty);
-                }
-                Stmt::Return(s) => {
-                    if let Some(ref value) = s.value {
-                        let (_, mut val_diags) = check_expression(value, &block_env);
-                        diagnostics.append(&mut val_diags);
-                    }
-                }
-                Stmt::Expression(s) => {
-                    let (_, mut expr_diags) = check_expression(&s.expr, &block_env);
-                    diagnostics.append(&mut expr_diags);
-                }
-                // TODO(Phase 6d): implement type checking for refutable let and
-                // record destructuring. No-op for now; subsequent checker task
-                // will replace this with full implementation.
-                Stmt::LetVariant(_) | Stmt::LetRecord(_) => {}
-            }
+            check_stmt(stmt, &mut block_env, &mut diagnostics);
         }
     }
 
@@ -193,6 +171,69 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
     checked
 }
 
+/// Check a single statement, mutating env and diags accordingly.
+fn check_stmt(stmt: &Stmt, env: &mut TypeEnv, diags: &mut Vec<TangleDiagnostic>) {
+    match stmt {
+        Stmt::Let(s) => {
+            let (val_ty, mut val_diags) = check_expression(&s.value, env);
+            diags.append(&mut val_diags);
+            env.variables.insert(s.name.clone(), val_ty);
+        }
+        Stmt::Const(s) => {
+            let (val_ty, mut val_diags) = check_expression(&s.value, env);
+            diags.append(&mut val_diags);
+            env.variables.insert(s.name.clone(), val_ty);
+        }
+        Stmt::Return(s) => {
+            if let Some(ref value) = s.value {
+                let (_, mut val_diags) = check_expression(value, env);
+                diags.append(&mut val_diags);
+            }
+        }
+        Stmt::Expression(s) => {
+            let (_, mut expr_diags) = check_expression(&s.expr, env);
+            diags.append(&mut expr_diags);
+        }
+        Stmt::LetVariant(s) => {
+            let (matched_ty, mut expr_diags) = check_expression(&s.expr, env);
+            diags.append(&mut expr_diags);
+
+            if let Some(sum) = as_sum_view(&matched_ty) {
+                if let Some(variant_ty) = find_variant_by_name(&sum, &s.variant_name) {
+                    if let Some(ref bind_name) = s.binding {
+                        let bind_ty = binding_type_of(variant_ty);
+                        env.variables.insert(bind_name.clone(), bind_ty);
+                    }
+                    for stmt in &s.else_branch {
+                        check_stmt(stmt, env, diags);
+                    }
+                } else {
+                    diags.push(TangleDiagnostic {
+                        code: "TANGLE_PATTERN_VARIANT_NOT_FOUND".into(),
+                        message: format!(
+                            "Variant '{}' not found in type {}",
+                            s.variant_name,
+                            type_display(&matched_ty)
+                        ),
+                        span: s.span.clone(),
+                    });
+                }
+            } else {
+                diags.push(TangleDiagnostic {
+                    code: "TANGLE_PATTERN_NOT_NARROWABLE".into(),
+                    message: format!(
+                        "Cannot destructure type {}",
+                        type_display(&matched_ty)
+                    ),
+                    span: s.span.clone(),
+                });
+            }
+        }
+        // TODO(Phase 6d): Task 7 will implement LetRecord.
+        Stmt::LetRecord(_) => {}
+    }
+}
+
 /// Find a heading by id, recursively searching the heading tree.
 fn find_heading_by_id<'a>(target_id: &str, headings: &'a [crate::model::TangleHeading]) -> Option<&'a crate::model::TangleHeading> {
     for h in headings {
@@ -204,4 +245,112 @@ fn find_heading_by_id<'a>(target_id: &str, headings: &'a [crate::model::TangleHe
         }
     }
     None
+}
+
+#[cfg(test)]
+mod phase6d_let_variant_tests {
+    use super::*;
+    use crate::ast::{Expr, IdentifierExpr, LetVariantStmt, LiteralExpr, LiteralKind, ReturnStmt};
+    use crate::model::SourceSpan;
+    use std::collections::HashMap;
+
+    fn span() -> SourceSpan {
+        SourceSpan { file: "".into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 }
+    }
+
+    fn prim(name: &str) -> Type {
+        Type::Primitive(PrimitiveType { name: name.to_string() })
+    }
+
+    fn int_t() -> Type {
+        prim("Int")
+    }
+
+    fn option_int() -> Type {
+        Type::GenericInstance(GenericTypeInstance {
+            base: "Option".to_string(),
+            args: vec![int_t()],
+        })
+    }
+
+    fn ident_expr(name: &str) -> Expr {
+        Expr::Identifier(IdentifierExpr { name: name.to_string(), span: span() })
+    }
+
+    fn num_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "0".to_string(), span: span() })
+    }
+
+    fn env_with_var(name: &str, ty: Type) -> TypeEnv {
+        let mut vars = HashMap::new();
+        vars.insert(name.to_string(), ty);
+        TypeEnv {
+            variables: vars,
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    fn let_variant_stmt(
+        variant: &str,
+        binding: Option<&str>,
+        target: Expr,
+        else_branch: Vec<Stmt>,
+    ) -> Stmt {
+        Stmt::LetVariant(LetVariantStmt {
+            variant_name: variant.to_string(),
+            binding: binding.map(|s| s.to_string()),
+            expr: Box::new(target),
+            else_branch,
+            span: span(),
+        })
+    }
+
+    #[test]
+    fn let_variant_injects_binding_into_env() {
+        // x: Option<Int>, `let Some(y) = x else { return 0 }`
+        // 期望: y: Int 已注入 env，无诊断
+        let mut env = env_with_var("x", option_int());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let else_branch = vec![Stmt::Return(ReturnStmt { value: Some(num_expr()), span: span() })];
+        let stmt = let_variant_stmt("Some", Some("y"), ident_expr("x"), else_branch);
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+        let y_ty = env.variables.get("y").expect("expected y to be injected into env");
+        assert!(
+            matches!(y_ty, Type::Primitive(PrimitiveType { ref name }) if name == "Int"),
+            "expected y: Int, got {:?}", y_ty
+        );
+    }
+
+    #[test]
+    fn let_variant_emits_diag_for_non_sum() {
+        // x: Int (not Sum/Option), `let Some(y) = x`
+        // 期望: TANGLE_PATTERN_NOT_NARROWABLE 诊断
+        let mut env = env_with_var("x", int_t());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_variant_stmt("Some", Some("y"), ident_expr("x"), vec![]);
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_PATTERN_NOT_NARROWABLE"),
+            "expected TANGLE_PATTERN_NOT_NARROWABLE diagnostic, got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn let_variant_emits_diag_for_unknown_variant() {
+        // x: Option<Int>, `let NonExistent = x`
+        // 期望: TANGLE_PATTERN_VARIANT_NOT_FOUND 诊断
+        let mut env = env_with_var("x", option_int());
+        let mut diags: Vec<TangleDiagnostic> = Vec::new();
+        let stmt = let_variant_stmt("NonExistent", None, ident_expr("x"), vec![]);
+        check_stmt(&stmt, &mut env, &mut diags);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_PATTERN_VARIANT_NOT_FOUND"),
+            "expected TANGLE_PATTERN_VARIANT_NOT_FOUND diagnostic, got: {:?}", diags
+        );
+    }
 }

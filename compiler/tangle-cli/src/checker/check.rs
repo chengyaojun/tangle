@@ -353,7 +353,7 @@ fn narrow_env_for_is(env: &TypeEnv, is_e: &IsExpr) -> TypeEnv {
 }
 
 /// 类型显示辅助（用于诊断消息）。
-fn type_display(ty: &Type) -> String {
+pub fn type_display(ty: &Type) -> String {
     match ty {
         Type::Primitive(p) => p.name.clone(),
         Type::Struct(s) => s.name.clone(),
