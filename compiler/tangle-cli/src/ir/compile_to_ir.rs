@@ -192,11 +192,24 @@ fn lower_function_body(
                 Stmt::Let(s) => (IRNodeKind::Compute, format!("let {}", s.name)),
                 Stmt::Const(s) => (IRNodeKind::Compute, format!("const {}", s.name)),
                 Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
-                // TODO(Phase 6d): emit proper IR nodes for refutable let and
-                // record destructuring. Placeholder labels for now; subsequent
-                // IR task will replace this with full implementation.
-                Stmt::LetVariant(s) => (IRNodeKind::Compute, format!("let_variant {}", s.variant_name)),
-                Stmt::LetRecord(_) => (IRNodeKind::Compute, "let_record".to_string()),
+                // Phase 6d: refutable let / record destructuring reuse the
+                // `Compute` kind with a descriptive label carrying the binding
+                // or field names. The IR schema stays unchanged (no new node
+                // kinds) — type narrowing is a checker concern, not an IR one.
+                Stmt::LetVariant(s) => {
+                    let label = match &s.binding {
+                        Some(b) => format!("let {}({})", s.variant_name, b),
+                        None => format!("let {}", s.variant_name),
+                    };
+                    (IRNodeKind::Compute, label)
+                }
+                Stmt::LetRecord(s) => {
+                    let fields_str = s.fields.iter()
+                        .map(|(f, v)| if f == v { f.clone() } else { format!("{}: {}", f, v) })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    (IRNodeKind::Compute, format!("let {{ {} }}", fields_str))
+                }
             };
             let src = stmt_source(stmt, &block.source);
             let node_id = id_gen.fresh();
@@ -249,4 +262,108 @@ fn has_main_callable(headings: &[TangleHeading]) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod phase6d_lower_tests {
+    use super::*;
+    use crate::checker::check_module::check_module;
+    use crate::frontend::compile_module::{compile_module, CompileModuleInput};
+    use crate::ir::graph::RuleGraph;
+
+    fn compile_to_graph(src: &str) -> RuleGraph {
+        let module = compile_module(CompileModuleInput {
+            file: "test.tangle.md".to_string(),
+            source: src.to_string(),
+        });
+        let checked = check_module(module);
+        let (graph, _diags) = compile_to_ir(&checked);
+        graph
+    }
+
+    fn collect_labels(graph: &RuleGraph) -> Vec<String> {
+        graph.functions.iter()
+            .flat_map(|f| f.nodes.iter())
+            .map(|n| n.label.clone())
+            .collect()
+    }
+
+    /// Smoke test: a trivial module lowers to a function with entry/exit nodes.
+    /// Verifies the pipeline (frontend → checker → IR) produces a well-formed
+    /// graph so the label-specific tests below can focus on label content.
+    #[test]
+    fn ir_pipeline_produces_entry_and_exit_nodes() {
+        let graph = compile_to_graph(r#"# TestSmoke
+
+### Wrapper
+
+#### main
+
+```@tangle
+return 0
+```
+"#);
+        let labels = collect_labels(&graph);
+        assert!(labels.iter().any(|l| l == "entry"), "expected entry node, got: {:?}", labels);
+        assert!(labels.iter().any(|l| l == "exit"), "expected exit node, got: {:?}", labels);
+    }
+
+    /// `let Some(y) = opt else { return 0 }` should lower to a Compute node
+    /// whose label records the binding name (e.g. `let Some(y)`), not just the
+    /// bare variant name. This keeps the IR readable when tracing refutable
+    /// patterns in generated graphs.
+    #[test]
+    fn let_variant_lowers_to_compute_with_binding_in_label() {
+        let graph = compile_to_graph(r#"# TestLetVariant
+
+### Wrapper
+
+#### main
+* `opt`: optional value (Option<Int>)
+
+```@tangle
+let Some(y) = opt else {
+  return 0
+}
+return y
+```
+"#);
+        let labels = collect_labels(&graph);
+        // Expect a label that mentions both the variant `Some` AND the binding
+        // `y` (e.g. `let Some(y)`). A bare `let_variant Some` would fail this.
+        let has_binding_label = labels.iter().any(|l| l.contains("Some(y)"));
+        assert!(has_binding_label, "expected label containing 'Some(y)', got: {:?}", labels);
+    }
+
+    /// `let { name } = item` should lower to a Compute node whose label records
+    /// the destructured field name (e.g. `let { name }`), not just a bare
+    /// `let_record` placeholder.
+    #[test]
+    fn let_record_lowers_to_compute_with_fields_in_label() {
+        let graph = compile_to_graph(r#"# TestLetRecord
+
+### Item
+* `name`: item name (String)
+* `price`: item price (Int)
+
+#### use_item
+* `item`: an item (Item)
+
+```@tangle
+let { name } = item
+return 0
+```
+
+#### main
+
+```@tangle
+return 0
+```
+"#);
+        let labels = collect_labels(&graph);
+        // Expect a label that mentions both the destructuring form `let {` and
+        // the field name `name` (e.g. `let { name }`).
+        let has_field_label = labels.iter().any(|l| l.contains("let {") && l.contains("name"));
+        assert!(has_field_label, "expected label containing 'let {{' and 'name', got: {:?}", labels);
+    }
 }

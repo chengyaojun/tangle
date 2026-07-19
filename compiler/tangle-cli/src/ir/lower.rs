@@ -38,11 +38,24 @@ pub fn lower_statements(stmts: &[Stmt], source: &str, _file: &str, id_gen: &mut 
             Stmt::Let(s) => (IRNodeKind::Compute, format!("let {}", s.name)),
             Stmt::Const(s) => (IRNodeKind::Compute, format!("const {}", s.name)),
             Stmt::Expression(_) => (IRNodeKind::Action, "expr".to_string()),
-            // TODO(Phase 6d): emit proper IR nodes for refutable let and
-            // record destructuring. Placeholder labels for now; subsequent
-            // IR task will replace this with full implementation.
-            Stmt::LetVariant(s) => (IRNodeKind::Compute, format!("let_variant {}", s.variant_name)),
-            Stmt::LetRecord(_) => (IRNodeKind::Compute, "let_record".to_string()),
+            // Phase 6d: refutable let / record destructuring reuse the
+            // `Compute` kind with a descriptive label carrying the binding
+            // or field names. The IR schema stays unchanged (no new node
+            // kinds) — type narrowing is a checker concern, not an IR one.
+            Stmt::LetVariant(s) => {
+                let label = match &s.binding {
+                    Some(b) => format!("let {}({})", s.variant_name, b),
+                    None => format!("let {}", s.variant_name),
+                };
+                (IRNodeKind::Compute, label)
+            }
+            Stmt::LetRecord(s) => {
+                let fields_str = s.fields.iter()
+                    .map(|(f, v)| if f == v { f.clone() } else { format!("{}: {}", f, v) })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                (IRNodeKind::Compute, format!("let {{ {} }}", fields_str))
+            }
         };
         let src = stmt_source(stmt, source);
 
