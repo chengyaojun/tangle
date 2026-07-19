@@ -199,7 +199,16 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
         Expr::If(e) => {
             let (_cond_ty, mut cond_diags) = check_expression(&e.condition, env);
             diags.append(&mut cond_diags);
-            let (then_ty, mut then_diags) = check_expression(&e.then_branch, env);
+
+            // Phase 6d: 若 condition 是 IsExpr，在 then 分支注入收窄后的 binding 类型。
+            // else 分支不做负向收窄（与设计规格 §5.3 一致）。
+            let then_env = if let Expr::Is(is_e) = &*e.condition {
+                narrow_env_for_is(env, is_e)
+            } else {
+                env.clone()
+            };
+
+            let (then_ty, mut then_diags) = check_expression(&e.then_branch, &then_env);
             diags.append(&mut then_diags);
             if let Some(ref else_branch) = e.else_branch {
                 let (else_ty, mut else_diags) = check_expression(else_branch, env);
@@ -290,17 +299,74 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             });
             Type::Primitive(PrimitiveType { name: "Bool".into() })
         }
-        // TODO(Phase 6d): implement proper type narrowing for `is` expressions.
-        // For now returns Bool (the result type of the type test) without
-        // narrowing the binding in the env. Subsequent checker task will
-        // replace this with full implementation.
         Expr::Is(e) => {
-            let (_expr_ty, mut expr_diags) = check_expression(&e.expr, env);
-            diags.append(&mut expr_diags);
+            let (matched_ty, mut is_diags) = check_expression(&e.expr, env);
+            diags.append(&mut is_diags);
+
+            if let Some(sum) = crate::checker::option_view::as_sum_view(&matched_ty) {
+                match &e.pattern {
+                    Pattern::Variant { name, .. } => {
+                        if crate::checker::match_check::find_variant_by_name(&sum, name).is_none() {
+                            diags.push(TangleDiagnostic {
+                                code: "TANGLE_PATTERN_VARIANT_NOT_FOUND".into(),
+                                message: format!(
+                                    "Variant '{}' not found in type {}",
+                                    name,
+                                    type_display(&matched_ty)
+                                ),
+                                span: e.span.clone(),
+                            });
+                        }
+                    }
+                }
+            } else {
+                diags.push(TangleDiagnostic {
+                    code: "TANGLE_PATTERN_NOT_NARROWABLE".into(),
+                    message: format!("Cannot narrow type {}", type_display(&matched_ty)),
+                    span: e.span.clone(),
+                });
+            }
+
             Type::Primitive(PrimitiveType { name: "Bool".into() })
         }
     };
     (ty, diags)
+}
+
+/// 为 `if x is Pattern` 的 then 分支构造收窄后的环境。
+///
+/// 仅注入 binding（如 `y`），不改变 `x` 本身的类型。这与设计规格 §5.3 一致，
+/// 避免 flow-sensitive 类型重写。若 variant 不存在或类型不可收窄，则静默回退
+/// （相关诊断已由 `Expr::Is` 分支产生，不在此重复）。
+fn narrow_env_for_is(env: &TypeEnv, is_e: &IsExpr) -> TypeEnv {
+    let mut narrowed = env.clone();
+    let (matched_ty, _) = check_expression(&is_e.expr, env);
+    if let Some(sum) = crate::checker::option_view::as_sum_view(&matched_ty) {
+        if let Pattern::Variant { name, binding: Some(binding) } = &is_e.pattern {
+            if let Some(variant_ty) = crate::checker::match_check::find_variant_by_name(&sum, name) {
+                let bind_ty = crate::checker::match_check::binding_type_of(variant_ty);
+                narrowed.variables.insert(binding.clone(), bind_ty);
+            }
+        }
+    }
+    narrowed
+}
+
+/// 类型显示辅助（用于诊断消息）。
+fn type_display(ty: &Type) -> String {
+    match ty {
+        Type::Primitive(p) => p.name.clone(),
+        Type::Struct(s) => s.name.clone(),
+        Type::Interface(i) => i.name.clone(),
+        Type::GenericInstance(g) => {
+            let args: Vec<String> = g.args.iter().map(type_display).collect();
+            format!("{}<{}>", g.base, args.join(", "))
+        }
+        Type::Sum(_) => "Sum".to_string(),
+        Type::Function(_) => "Function".to_string(),
+        Type::Var(_) => "Var".to_string(),
+        Type::Any => "Any".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -525,6 +591,120 @@ mod match_narrowing_tests {
         assert!(
             !matches!(ty, Type::Primitive(PrimitiveType { name }) if name == "Bool"),
             "should not return Bool (old behavior)"
+        );
+    }
+}
+
+#[cfg(test)]
+mod phase6d_is_tests {
+    use super::*;
+    use crate::model::SourceSpan;
+    use std::collections::HashMap;
+
+    fn span() -> SourceSpan {
+        SourceSpan { file: "".into(), start_line: 0, start_column: 0, end_line: 0, end_column: 0 }
+    }
+
+    fn prim(name: &str) -> Type {
+        Type::Primitive(PrimitiveType { name: name.to_string() })
+    }
+
+    fn int_t() -> Type {
+        prim("Int")
+    }
+
+    fn option_int() -> Type {
+        Type::GenericInstance(GenericTypeInstance {
+            base: "Option".to_string(),
+            args: vec![int_t()],
+        })
+    }
+
+    fn ident_expr(name: &str) -> Expr {
+        Expr::Identifier(IdentifierExpr { name: name.to_string(), span: span() })
+    }
+
+    fn num_expr() -> Expr {
+        Expr::Literal(LiteralExpr { literal_kind: LiteralKind::Number, value: "0".to_string(), span: span() })
+    }
+
+    fn is_expr(target: Expr, name: &str, binding: Option<&str>) -> Expr {
+        Expr::Is(IsExpr {
+            expr: Box::new(target),
+            pattern: Pattern::Variant {
+                name: name.to_string(),
+                binding: binding.map(|s| s.to_string()),
+            },
+            span: span(),
+        })
+    }
+
+    fn env_with_var(name: &str, ty: Type) -> TypeEnv {
+        let mut vars = HashMap::new();
+        vars.insert(name.to_string(), ty);
+        TypeEnv {
+            variables: vars,
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            interfaces: HashMap::new(),
+            receiver: None,
+            error_registry: None,
+        }
+    }
+
+    #[test]
+    fn is_expr_returns_bool_type() {
+        // x: Option<Int>, x is Some(y) → Bool, no diagnostics
+        let env = env_with_var("x", option_int());
+        let e = is_expr(ident_expr("x"), "Some", Some("y"));
+        let (ty, diags) = check_expression(&e, &env);
+        assert!(
+            matches!(ty, Type::Primitive(PrimitiveType { ref name }) if name == "Bool"),
+            "expected Bool, got {:?}", ty
+        );
+        assert!(diags.is_empty(), "unexpected diagnostics: {:?}", diags);
+    }
+
+    #[test]
+    fn is_expr_emits_diag_for_unknown_variant() {
+        // x: Option<Int>, x is NonExistent → TANGLE_PATTERN_VARIANT_NOT_FOUND
+        let env = env_with_var("x", option_int());
+        let e = is_expr(ident_expr("x"), "NonExistent", None);
+        let (_ty, diags) = check_expression(&e, &env);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_PATTERN_VARIANT_NOT_FOUND"),
+            "expected TANGLE_PATTERN_VARIANT_NOT_FOUND diagnostic, got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn is_expr_emits_diag_for_non_sum_type() {
+        // x: Int (not Sum/Option), x is Some → TANGLE_PATTERN_NOT_NARROWABLE
+        let env = env_with_var("x", int_t());
+        let e = is_expr(ident_expr("x"), "Some", None);
+        let (_ty, diags) = check_expression(&e, &env);
+        assert!(
+            diags.iter().any(|d| d.code == "TANGLE_PATTERN_NOT_NARROWABLE"),
+            "expected TANGLE_PATTERN_NOT_NARROWABLE diagnostic, got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn if_with_is_injects_binding_in_then() {
+        // if (x is Some(y)) { y } else { 0 }
+        // 验证 then 分支中 y 被收窄为 Int，不报 SYMBOL_NOT_FOUND for 'y'
+        let env = env_with_var("x", option_int());
+        let cond = is_expr(ident_expr("x"), "Some", Some("y"));
+        let if_e = Expr::If(IfExpr {
+            condition: Box::new(cond),
+            then_branch: Box::new(ident_expr("y")),
+            else_branch: Some(Box::new(num_expr())),
+            span: span(),
+        });
+        let (_ty, diags) = check_expression(&if_e, &env);
+        assert!(
+            !diags.iter().any(|d| d.code == "TANGLE_SYMBOL_NOT_FOUND" && d.message.contains("'y'")),
+            "y should be narrowed in then-branch, but got: {:?}", diags
         );
     }
 }
