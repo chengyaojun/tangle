@@ -119,12 +119,8 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
                 let fields: std::collections::HashMap<String, Type> = parent_heading.params.iter()
                     .map(|p| {
                         let ty = p.type_name.as_ref()
-                            .map(|tn| match tn.as_str() {
-                                "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
-                                "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
-                                "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
-                                _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
-                            })
+                            .map(|tn| crate::checker::resolve::type_name_to_type(tn)
+                                .unwrap_or_else(|| Type::Primitive(PrimitiveType { name: tn.clone() })))
                             .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
                         (p.name.clone(), ty)
                     }).collect();
@@ -140,12 +136,8 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
         if let Some(owner) = find_heading_by_id(&block.heading_id, &module.headings) {
             for p in &owner.params {
                 let ty = p.type_name.as_ref()
-                    .map(|tn| match tn.as_str() {
-                        "String" => Type::Primitive(PrimitiveType { name: "String".into() }),
-                        "Int" => Type::Primitive(PrimitiveType { name: "Int".into() }),
-                        "Bool" => Type::Primitive(PrimitiveType { name: "Bool".into() }),
-                        _ => Type::Primitive(PrimitiveType { name: tn.clone() }),
-                    })
+                    .map(|tn| crate::checker::resolve::type_name_to_type(tn)
+                        .unwrap_or_else(|| Type::Primitive(PrimitiveType { name: tn.clone() })))
                     .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
                 block_env.variables.insert(p.name.clone(), ty);
             }
@@ -521,6 +513,60 @@ mod phase6d_let_record_tests {
         assert!(
             matches!(*o_ty, Type::Any),
             "expected o: Any, got {:?}", o_ty
+        );
+    }
+}
+
+#[cfg(test)]
+mod phase6d_param_type_tests {
+    use super::*;
+
+    #[test]
+    fn param_type_injection_handles_option_int() {
+        // 验证 `* \`opt\`: Optional value (Option<Int>)` 参数被注入为 GenericInstance
+        // 而非 Primitive("Option<Int>")。当参数类型被错误地塞进 Primitive.name 时，
+        // 在 method body 中使用 `let Some(x) = opt else { return 0 }` 会触发
+        // TANGLE_PATTERN_NOT_NARROWABLE 诊断（因为 Primitive 不是 Sum/Option）。
+        let src = r#"# TestParam
+
+### Processor
+* `opt`: Optional value (Option<Int>)
+
+#### process
+* `opt`: Optional value (Option<Int>)
+
+```@tangle
+let Some(x) = opt else { return 0 }
+return x
+```
+
+#### main
+
+```@tangle
+return 0
+```
+"#;
+        use crate::frontend::compile_module::{compile_module, CompileModuleInput};
+        let module = compile_module(CompileModuleInput {
+            file: "test.tangle.md".to_string(),
+            source: src.to_string(),
+        });
+        let checked = check_module(module);
+        // 不应有 TANGLE_PATTERN_NOT_NARROWABLE 诊断（来自 LetVariant 收窄失败），
+        // 也不应有 TANGLE_SYMBOL_NOT_FOUND（来自 binding 未注入）。
+        let has_narrowable_error = checked.diagnostics.iter()
+            .any(|d| d.code == "TANGLE_PATTERN_NOT_NARROWABLE");
+        assert!(
+            !has_narrowable_error,
+            "Option<Int> should be recognized as GenericInstance, got diagnostics: {:?}",
+            checked.diagnostics
+        );
+        let has_symbol_error = checked.diagnostics.iter()
+            .any(|d| d.code == "TANGLE_SYMBOL_NOT_FOUND" && d.message.contains("'x'"));
+        assert!(
+            !has_symbol_error,
+            "x should be injected via let-variant narrowing, got diagnostics: {:?}",
+            checked.diagnostics
         );
     }
 }

@@ -244,9 +244,9 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
             for arm in &e.arms {
                 // 构造收窄后的 arm 局部环境
                 let mut arm_env = env.clone();
-                if let Type::Sum(ref sum) = matched_ty {
+                if let Some(sum) = crate::checker::option_view::as_sum_view(&matched_ty) {
                     if let MatchPattern::Variant { ref name, ref binding } = arm.pattern {
-                        if let Some(variant_ty) = crate::checker::match_check::find_variant_by_name(sum, name) {
+                        if let Some(variant_ty) = crate::checker::match_check::find_variant_by_name(&sum, name) {
                             if let Some(ref bind_name) = binding {
                                 let bind_ty = crate::checker::match_check::binding_type_of(variant_ty);
                                 arm_env.variables.insert(bind_name.clone(), bind_ty);
@@ -258,8 +258,8 @@ pub fn check_expression(expr: &Expr, env: &TypeEnv) -> (Type, Vec<TangleDiagnost
                 diags.append(&mut arm_diags);
                 arm_types.push(arm_ty);
             }
-            if let Type::Sum(ref sum) = matched_ty {
-                let missing = crate::checker::match_check::check_match_exhaustiveness(sum, &e.arms);
+            if let Some(sum) = crate::checker::option_view::as_sum_view(&matched_ty) {
+                let missing = crate::checker::match_check::check_match_exhaustiveness(&sum, &e.arms);
                 for m in missing {
                     diags.push(TangleDiagnostic {
                         code: "TANGLE_MATCH_NOT_EXHAUSTIVE".into(),
@@ -705,6 +705,51 @@ mod phase6d_is_tests {
         assert!(
             !diags.iter().any(|d| d.code == "TANGLE_SYMBOL_NOT_FOUND" && d.message.contains("'y'")),
             "y should be narrowed in then-branch, but got: {:?}", diags
+        );
+    }
+
+    #[test]
+    fn match_option_int_injects_binding() {
+        // match opt { Some(x) => x, None => 0 }
+        // opt: Option<Int>（GenericInstance），不是 Type::Sum。
+        // 验证 as_sum_view 在 Match 分支中被正确调用：
+        // - x 被注入为 Int（无 TANGLE_SYMBOL_NOT_FOUND）
+        // - 返回类型统一为 Int
+        let env = env_with_var("opt", option_int());
+        let match_expr = Expr::Match(MatchExpr {
+            expr: Box::new(ident_expr("opt")),
+            arms: vec![
+                MatchArm {
+                    pattern: MatchPattern::Variant {
+                        name: "Some".to_string(),
+                        binding: Some("x".to_string()),
+                    },
+                    body: ident_expr("x"),
+                    span: span(),
+                },
+                MatchArm {
+                    pattern: MatchPattern::Variant {
+                        name: "None".to_string(),
+                        binding: None,
+                    },
+                    body: num_expr(),
+                    span: span(),
+                },
+            ],
+            span: span(),
+        });
+        let (ty, diags) = check_expression(&match_expr, &env);
+        let has_symbol_error = diags.iter()
+            .any(|d| d.code == "TANGLE_SYMBOL_NOT_FOUND" && d.message.contains("'x'"));
+        assert!(
+            !has_symbol_error,
+            "x should be injected via as_sum_view in Match, got diagnostics: {:?}",
+            diags
+        );
+        // 两个 arm 都返回 Int → 统一为 Int
+        assert!(
+            matches!(ty, Type::Primitive(PrimitiveType { ref name }) if name == "Int"),
+            "expected Int, got {:?}", ty
         );
     }
 }
