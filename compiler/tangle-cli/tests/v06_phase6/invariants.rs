@@ -118,7 +118,7 @@ fn inv5_existing_fixtures_unchanged() {
     // Verified in Task 13 via differential tests (tests/audit/diff-ir.ps1).
     // This test exists to assert the invariant's existence in the test suite.
     let _ = fixture_path("return_inference.tangle.md");
-    assert!(true);
+    let _ = fixture_path("generics.tangle.md");
 }
 
 #[test]
@@ -126,5 +126,6 @@ fn inv6_new_fixtures_rust_ts_match() {
     // Verified in Task 13 via differential tests (tests/audit/diff-ir.ps1).
     // This test exists to assert the invariant's existence in the test suite.
     let _ = fixture_path("if_narrowing.tangle.md");
-    assert!(true);
+    let _ = fixture_path("destructure.tangle.md");
+    let _ = fixture_path("option_match.tangle.md");
 }

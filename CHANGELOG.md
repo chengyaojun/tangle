@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.8.0 — Phase 6d Type Narrowing Completeness
+
+- Feat: `if x is Pattern` expression for variant type testing with optional binding (e.g. `if opt is Some(y) { ... }`)
+- Feat: `let Some(y) = x else { ... }` refutable variant destructuring with else branch
+- Feat: `let { ok, err } = r` irrefutable record destructuring with optional field rename (`let { ok: o, err: e } = r`)
+- Feat: built-in `as_sum_view()` recognizes `Option<T>` as `Sum(Some<T>, None)` for match/Is/LetVariant arms
+- Feat: `resolve_struct_in_env` helper fills empty-shell struct payloads from `TypeEnv::structs` (fixes field access on Option<Struct> payloads)
+- Diagnostics: 5 new codes — `TANGLE_REFUTABLE_LET_REQUIRES_ELSE`, `TANGLE_PATTERN_VARIANT_NOT_FOUND`, `TANGLE_PATTERN_NOT_NARROWABLE`, `TANGLE_DESTRUCTURE_NOT_STRUCT`, `TANGLE_STRUCT_FIELD_NOT_FOUND`
+- Design: AST extension (3 new nodes + `Pattern` subtree) + IR lowering desugars to existing `Compute`/`Action` nodes with descriptive labels (`let Some(item)`, `let { name, price }`). IR schema unchanged.
+- Compatibility: three emitters (JS/Py/Go) unchanged; existing 15 fixtures IR unchanged
+- TS reference: full mirror of Phase 6d AST/lexer/parser/checker/IR; parser now supports `if cond { block }` and `match expr { arms }` syntax (previously known limitation); lexer recognizes `=>` as `fatArrow` (was only `->`); inferReturnTypes handles `letVariant`/`letRecord` cases
+
+### Verification
+
+- `cargo test --workspace`: 376 tests pass, 0 failures
+- `cargo clippy --workspace --all-targets -- -D warnings`: zero warnings
+- `reference && npm test`: 259 tests pass
+- `reference && npm run build`: zero type errors
+- `tests/audit/diff-ir.ps1`: 18 MATCH + 0 KNOWN_DIFF + 0 DIFF + 0 SKIPPED (was 13/0/1/4 in Phase 6c)
+- `tests/audit/run-audit.ps1`: 238 cells, 0 failing
+
+### Known limitations (deferred to Phase 6e)
+
+- `Result<T,E>` built-in Sum view (stdlib signatures registry not yet populated)
+- `is not Some` negative narrowing (requires negative type computation)
+- Compound OR patterns (`is Some or None`)
+- Guard expressions (`is Some(y) && y > 0`)
+- Flow-sensitive narrowing (x's type does not change in then branch — only binding is injected)
+- User-defined generic types (`Foo<T>`) and constraints (`T: Comparable`)
+- Nested patterns (`is Some({ ok, err })`)
+- Record destructure wildcard (`let { _, err } = r`)
+
 ## v0.3.0 — Phase 1 Call Expression Type Checking
 
 - Feat: introduce `Type::Any` and `CallableSignature::is_variadic` to model variadic functions (e.g. `fmt.println`)

@@ -929,7 +929,7 @@ impl<'a> ParserState<'a> {
                         && self
                             .tokens
                             .get(self.pos + 1)
-                            .map_or(false, |t| t.kind == TokenKind::LParen)
+                            .is_some_and(|t| t.kind == TokenKind::LParen)
                     {
                         let stmt = self.parse_let_variant(kw_tok.span.clone())?;
                         self.skip_semicolon();
@@ -943,7 +943,7 @@ impl<'a> ParserState<'a> {
                         && self
                             .tokens
                             .get(self.pos + 1)
-                            .map_or(false, |t| t.kind == TokenKind::Eq)
+                            .is_some_and(|t| t.kind == TokenKind::Eq)
                     {
                         let saved_pos = self.pos;
                         let saved_diags_len = self.diagnostics.len();
@@ -954,7 +954,7 @@ impl<'a> ParserState<'a> {
                         let failed_with_missing_else = self
                             .diagnostics
                             .get(saved_diags_len)
-                            .map_or(false, |d| {
+                            .is_some_and(|d| {
                                 d.code == "TANGLE_REFUTABLE_LET_REQUIRES_ELSE"
                             });
                         if failed_with_missing_else {
