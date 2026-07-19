@@ -302,5 +302,17 @@ function lowerStmtForFunction(stmt: Stmt): { kind: IRNodeKind; label: string } {
       return { kind: "compute", label: `const ${stmt.name}` };
     case "expression":
       return { kind: "action", label: "expr" };
+    case "letVariant": {
+      const label = stmt.binding
+        ? `let ${stmt.variantName}(${stmt.binding})`
+        : `let ${stmt.variantName}`;
+      return { kind: "compute", label };
+    }
+    case "letRecord": {
+      const fieldsStr = stmt.fields
+        .map(([f, v]) => (f === v ? f : `${f}: ${v}`))
+        .join(", ");
+      return { kind: "compute", label: `let { ${fieldsStr} }` };
+    }
   }
 }

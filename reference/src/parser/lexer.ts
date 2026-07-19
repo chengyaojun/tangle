@@ -12,6 +12,7 @@ export type TokenKind =
   | "if"
   | "else"
   | "this"
+  | "is"
   | "pipeOp"
   | "dot"
   | "comma"
@@ -60,6 +61,7 @@ const KEYWORDS: Record<string, TokenKind> = {
   this: "this",
   true: "true",
   false: "false",
+  is: "is",
 };
 
 const MULTI_CHAR_OPS: Record<string, Record<string, TokenKind>> = {

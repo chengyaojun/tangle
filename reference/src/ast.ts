@@ -17,7 +17,8 @@ export type Expr =
   | PropagationExpr
   | MatchExpr
   | DestructureExpr
-  | PanicExpr;
+  | PanicExpr
+  | IsExpr;
 
 export type LiteralExpr = {
   kind: "literal";
@@ -120,7 +121,9 @@ export type Stmt =
   | ReturnStmt
   | LetStmt
   | ConstStmt
-  | ExpressionStmt;
+  | ExpressionStmt
+  | LetVariantStmt
+  | LetRecordStmt;
 
 export type ReturnStmt = {
   kind: "return";
@@ -235,6 +238,39 @@ export type DestructureExpr = {
 export type PanicExpr = {
   kind: "panic";
   message: Expr;
+  span: SourceSpan;
+};
+
+// ─── Patterns (Phase 6d) ──────────────────────────────
+
+export type Pattern =
+  | { kind: "variant"; name: string; binding?: string; span: SourceSpan }
+  | { kind: "wildcard"; span: SourceSpan };
+
+// ─── IsExpr (Phase 6d type narrowing) ─────────────────
+
+export type IsExpr = {
+  kind: "is";
+  expr: Expr;
+  pattern: Pattern;
+  span: SourceSpan;
+};
+
+// ─── Refutable let / Record destructuring (Phase 6d) ──
+
+export type LetVariantStmt = {
+  kind: "letVariant";
+  variantName: string;
+  binding: string | null;
+  expr: Expr;
+  elseBranch: Stmt[];
+  span: SourceSpan;
+};
+
+export type LetRecordStmt = {
+  kind: "letRecord";
+  fields: [string, string][];  // [fieldName, localVar]
+  expr: Expr;
   span: SourceSpan;
 };
 

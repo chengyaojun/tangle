@@ -1,4 +1,4 @@
-import type { BinaryOp, CodeBody, Expr, Stmt, TypeExpr, RecordField, ArrowParam } from "../ast.js";
+import type { BinaryOp, CodeBody, Expr, Stmt, TypeExpr, RecordField, ArrowParam, Pattern, LetVariantStmt, LetRecordStmt } from "../ast.js";
 import type { Token } from "./lexer.js";
 import type { TangleDiagnostic, SourceSpan } from "../model.js";
 
@@ -86,6 +86,8 @@ function infixPrecedence(token: Token): number {
   if (token.kind === "lbrace") return 2;
   // pipe operator (|>)
   if (token.kind === "pipeOp") return 2;
+  // Phase 6d: is operator (same precedence as ||)
+  if (token.kind === "is") return 2;
   // Look up binary operators via token value (e.g. "+" for kind "plus", "==" for kind "eqeq")
   const opPrec = PREC[token.value];
   if (opPrec !== undefined) return opPrec;
@@ -456,6 +458,13 @@ function parseInfix(state: ParserState, left: Expr, token: Token): Expr {
     return { kind: "pipe", left, right, span: mergeSpan(left.span, right.span) };
   }
 
+  // Phase 6d: is Variant / is Variant(binding) type narrowing
+  if (token.kind === "is") {
+    advance(state); // consume 'is'
+    const pattern = parsePattern(state);
+    return { kind: "is", expr: left, pattern, span: mergeSpan(left.span, pattern.span) };
+  }
+
   // Binary operators (via Pratt)
   const op = token.value;
   advance(state);
@@ -469,6 +478,43 @@ function parseInfix(state: ParserState, left: Expr, token: Token): Expr {
     right,
     span: mergeSpan(left.span, right.span),
   };
+}
+
+// ─── Pattern Parser (Phase 6d) ────────────────────────
+
+function parsePattern(state: ParserState): Pattern {
+  const nameToken = peek(state);
+  if (nameToken.kind !== "identifier") {
+    state.diagnostics.push({
+      code: "TANGLE_PARSE_EXPECTED_IDENTIFIER",
+      message: "Expected variant name after 'is'",
+      span: nameToken.span,
+    });
+    return { kind: "variant", name: "", span: nameToken.span };
+  }
+  advance(state);
+  // Optional binding: Variant(name)
+  if (peek(state).kind === "lparen") {
+    advance(state); // (
+    const bindingToken = peek(state);
+    if (bindingToken.kind !== "identifier") {
+      state.diagnostics.push({
+        code: "TANGLE_PARSE_EXPECTED_IDENTIFIER",
+        message: "Expected binding name after '('",
+        span: bindingToken.span,
+      });
+      return { kind: "variant", name: nameToken.value, span: nameToken.span };
+    }
+    advance(state);
+    if (peek(state).kind === "rparen") advance(state); // )
+    return {
+      kind: "variant",
+      name: nameToken.value,
+      binding: bindingToken.value,
+      span: mergeSpan(nameToken.span, bindingToken.span),
+    };
+  }
+  return { kind: "variant", name: nameToken.value, span: nameToken.span };
 }
 
 // ─── Statement Parser ──────────────────────────────────
@@ -515,8 +561,26 @@ function parseStmt(state: ParserState): Stmt {
   }
 
   // let name [: Type] = expr
+  // Phase 6d: let Variant(binding) = expr else { ... }
+  // Phase 6d: let { field1, field2: local2 } = expr
   if (token.kind === "let" || token.kind === "const") {
     const kw = advance(state);
+    const nextToken = peek(state);
+
+    // Phase 6d: let { field, ... } = expr  (record destructuring)
+    if (nextToken.kind === "lbrace") {
+      return parseLetRecord(state, kw.span);
+    }
+
+    // Phase 6d: let Variant(binding) = expr else { ... }
+    // Detect: identifier followed by `(` — this is a refutable pattern
+    if (nextToken.kind === "identifier") {
+      const afterIdent = state.tokens[state.pos + 1];
+      if (afterIdent?.kind === "lparen") {
+        return parseLetVariant(state, kw.span);
+      }
+    }
+
     const nameToken = peek(state);
     if (nameToken.kind !== "identifier") {
       state.diagnostics.push({
@@ -542,6 +606,88 @@ function parseStmt(state: ParserState): Stmt {
   // expression statement
   const expr = parseExpr(state, 0);
   return { kind: "expression", expr, span: expr.span };
+}
+
+// ─── Phase 6d: Let Variant / Record Destructuring ──────
+
+function parseLetRecord(state: ParserState, startSpan: SourceSpan): LetRecordStmt {
+  advance(state); // {
+  const fields: [string, string][] = [];
+  while (peek(state).kind !== "rbrace" && peek(state).kind !== "eof") {
+    const fieldToken = peek(state);
+    if (fieldToken.kind !== "identifier") break;
+    advance(state);
+    let localVar = fieldToken.value;
+    if (peek(state).kind === "colon") {
+      advance(state); // :
+      const localToken = peek(state);
+      if (localToken.kind === "identifier") {
+        advance(state);
+        localVar = localToken.value;
+      }
+    }
+    fields.push([fieldToken.value, localVar]);
+    if (peek(state).kind === "comma") advance(state);
+  }
+  const rbrace = peek(state);
+  if (rbrace.kind === "rbrace") advance(state); // }
+  if (peek(state).kind === "eq") advance(state); // =
+  const expr = parseExpr(state, 0);
+  return {
+    kind: "letRecord",
+    fields,
+    expr,
+    span: mergeSpan(startSpan, expr.span),
+  };
+}
+
+function parseLetVariant(state: ParserState, startSpan: SourceSpan): LetVariantStmt {
+  const variantToken = advance(state); // Variant name
+  let binding: string | null = null;
+  if (peek(state).kind === "lparen") {
+    advance(state); // (
+    const bindingToken = peek(state);
+    if (bindingToken.kind === "identifier") {
+      advance(state);
+      binding = bindingToken.value;
+    }
+    if (peek(state).kind === "rparen") advance(state); // )
+  }
+  if (peek(state).kind === "eq") advance(state); // =
+  const expr = parseExpr(state, 0);
+  // Refutable let requires `else { ... }`
+  if (peek(state).kind !== "else") {
+    state.diagnostics.push({
+      code: "TANGLE_REFUTABLE_LET_REQUIRES_ELSE",
+      message: "Refutable let pattern requires `else { ... }` branch",
+      span: peek(state).span,
+    });
+    return {
+      kind: "letVariant",
+      variantName: variantToken.value,
+      binding,
+      expr,
+      elseBranch: [],
+      span: mergeSpan(startSpan, expr.span),
+    };
+  }
+  advance(state); // else
+  const lbrace = peek(state);
+  if (lbrace.kind === "lbrace") advance(state); // {
+  const elseBranch: Stmt[] = [];
+  while (peek(state).kind !== "rbrace" && peek(state).kind !== "eof") {
+    elseBranch.push(parseStmt(state));
+    if (peek(state).kind === "semicolon") advance(state);
+  }
+  if (peek(state).kind === "rbrace") advance(state); // }
+  return {
+    kind: "letVariant",
+    variantName: variantToken.value,
+    binding,
+    expr,
+    elseBranch,
+    span: mergeSpan(startSpan, expr.span),
+  };
 }
 
 // ─── Type Annotation Parser (inline) ─────────────────
