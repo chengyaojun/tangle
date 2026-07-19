@@ -139,6 +139,7 @@ pub fn check_module(module: TangleModule) -> CheckedModule {
                     .map(|tn| crate::checker::resolve::type_name_to_type(tn)
                         .unwrap_or_else(|| Type::Primitive(PrimitiveType { name: tn.clone() })))
                     .unwrap_or(Type::Primitive(PrimitiveType { name: "String".into() }));
+                let ty = resolve_struct_in_env(&ty, &type_env);
                 block_env.variables.insert(p.name.clone(), ty);
             }
         }
