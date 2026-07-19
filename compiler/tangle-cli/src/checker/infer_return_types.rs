@@ -3,6 +3,8 @@ use crate::ast::Stmt;
 use crate::checker::check_module::CheckedModule;
 use crate::checker::check::check_expression;
 use crate::checker::env::{ReceiverContext, TypeEnv};
+use crate::checker::match_check::{binding_type_of, find_variant_by_name};
+use crate::checker::option_view::{as_sum_view, resolve_struct_in_env};
 use crate::checker::resolve::find_receiver_heading;
 use crate::checker::types::*;
 use crate::checker::unify::unify_all;
@@ -44,30 +46,7 @@ fn infer_function_return_type(
             continue;
         }
         let mut block_env = env.clone();
-        for stmt in &block.body.statements {
-            match stmt {
-                Stmt::Let(s) => {
-                    let (ty, _) = check_expression(&s.value, &block_env);
-                    block_env.variables.insert(s.name.clone(), ty);
-                }
-                Stmt::Const(s) => {
-                    let (ty, _) = check_expression(&s.value, &block_env);
-                    block_env.variables.insert(s.name.clone(), ty);
-                }
-                Stmt::Return(s) => {
-                    if let Some(ref value) = s.value {
-                        let (ty, _) = check_expression(value, &block_env);
-                        return_types.push(ty);
-                    }
-                    // `return;`（无值）不贡献类型
-                }
-                Stmt::Expression(_) => {}
-                // TODO(Phase 6d): handle return-type contributions from
-                // refutable let and record destructuring. No-op for now;
-                // subsequent checker task will replace this.
-                Stmt::LetVariant(_) | Stmt::LetRecord(_) => {}
-            }
-        }
+        collect_returns_from_stmts(&block.body.statements, &mut block_env, &mut return_types);
     }
 
     // 3. 统一所有 return 类型
@@ -75,6 +54,70 @@ fn infer_function_return_type(
         None
     } else {
         Some(unify_all(&return_types).unwrap_or(Type::Any))
+    }
+}
+
+/// 遍历语句列表，在类型环境中累积 binding 类型，并收集所有 `return` 表达式的类型。
+///
+/// 处理 `Let` / `Const` / `Return` / `Expression` 以及 Phase 6d 新增的
+/// `LetVariant`（refutable 变体解构）与 `LetRecord`（record 解构）。
+/// `LetVariant` 的 else 分支会被递归处理，以便收集其中的 `return` 类型。
+fn collect_returns_from_stmts(
+    stmts: &[Stmt],
+    env: &mut TypeEnv,
+    return_types: &mut Vec<Type>,
+) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(s) => {
+                let (ty, _) = check_expression(&s.value, env);
+                env.variables.insert(s.name.clone(), ty);
+            }
+            Stmt::Const(s) => {
+                let (ty, _) = check_expression(&s.value, env);
+                env.variables.insert(s.name.clone(), ty);
+            }
+            Stmt::Return(s) => {
+                if let Some(ref value) = s.value {
+                    let (ty, _) = check_expression(value, env);
+                    return_types.push(ty);
+                }
+                // `return;`（无值）不贡献类型
+            }
+            Stmt::Expression(_) => {}
+            Stmt::LetVariant(v) => {
+                let (matched_ty, _) = check_expression(&v.expr, env);
+                if let Some(sum) = as_sum_view(&matched_ty) {
+                    if let Some(variant_ty) = find_variant_by_name(&sum, &v.variant_name) {
+                        if let Some(ref bind_name) = v.binding {
+                            let raw_ty = binding_type_of(variant_ty);
+                            let bind_ty = resolve_struct_in_env(&raw_ty, env);
+                            env.variables.insert(bind_name.clone(), bind_ty);
+                        }
+                        // 递归处理 else 分支，收集其中的 return 类型
+                        collect_returns_from_stmts(&v.else_branch, env, return_types);
+                    }
+                }
+            }
+            Stmt::LetRecord(r) => {
+                let (matched_ty, _) = check_expression(&r.expr, env);
+                match matched_ty {
+                    Type::Struct(ref struct_ty) => {
+                        for (field_name, local_var) in &r.fields {
+                            if let Some(field_ty) = struct_ty.fields.get(field_name) {
+                                env.variables.insert(local_var.clone(), field_ty.clone());
+                            }
+                        }
+                    }
+                    Type::Any => {
+                        for (_, local_var) in &r.fields {
+                            env.variables.insert(local_var.clone(), Type::Any);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }
 
