@@ -3,7 +3,7 @@ use crate::model::{SourceSpan, TangleDiagnostic};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
     Number, String, True, False, Identifier,
-    Return, Let, Const, If, Else, This,
+    Return, Let, Const, If, Else, This, Is,
     PipeOp, Dot, Comma, Colon, Semicolon,
     LParen, RParen, LBrace, RBrace, LBracket, RBracket,
     Plus, Minus, Star, Slash, Percent,
@@ -139,6 +139,7 @@ impl<'a> Lexer<'a> {
         let kind = match lexeme.as_str() {
             "return" => TokenKind::Return, "let" => TokenKind::Let, "const" => TokenKind::Const,
             "if" => TokenKind::If, "else" => TokenKind::Else, "this" => TokenKind::This,
+            "is" => TokenKind::Is,
             "true" => TokenKind::True, "false" => TokenKind::False,
             "match" => TokenKind::ErrorKw, "panic" => TokenKind::ErrorKw,
             _ => TokenKind::Identifier,
@@ -309,5 +310,22 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::Number);
         assert_eq!(tokens[1].lexeme, "42");
         assert_eq!(tokens[1].span.start_line, 2);
+    }
+
+    #[test]
+    fn lex_is_keyword() {
+        let (tokens, _diags) = tokenize("if x is Some", "test.md");
+        assert!(
+            tokens.iter().any(|t| matches!(t.kind, TokenKind::Is)),
+            "expected TokenKind::Is in: {:?}",
+            tokens
+        );
+    }
+
+    #[test]
+    fn lex_is_alone_is_keyword() {
+        // "is" 单独出现仍是关键字（保留字），不可作变量名
+        let (tokens, _diags) = tokenize("is", "test.md");
+        assert!(tokens.iter().any(|t| matches!(t.kind, TokenKind::Is)));
     }
 }
