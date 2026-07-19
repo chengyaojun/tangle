@@ -366,4 +366,35 @@ return 0
         let has_field_label = labels.iter().any(|l| l.contains("let {") && l.contains("name"));
         assert!(has_field_label, "expected label containing 'let {{' and 'name', got: {:?}", labels);
     }
+
+    /// `let { name: n } = item` (rename form, where the field name differs from
+    /// the local binding) should lower to a Compute node whose label records the
+    /// `field: local_var` pair (e.g. `name: n`), not just the bare field name.
+    /// This covers the `field_name != local_var` branch of `LetRecord` lowering.
+    #[test]
+    fn let_record_with_rename_produces_field_colon_local_label() {
+        let graph = compile_to_graph(r#"# TestLetRecordRename
+
+### Item
+* `name`: item name (String)
+
+#### use_item
+* `item`: item (Item)
+
+```@tangle
+let { name: n } = item
+return item
+```
+
+#### main
+
+```@tangle
+return 0
+```
+"#);
+        let labels = collect_labels(&graph);
+        // Expect a label containing the rename pair `name: n` (not just `name`).
+        let has_rename_label = labels.iter().any(|l| l.contains("name: n"));
+        assert!(has_rename_label, "expected label containing 'name: n' (rename format), got: {:?}", labels);
+    }
 }
