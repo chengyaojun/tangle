@@ -83,11 +83,15 @@ function infixPrecedence(token: Token): number {
   // member access (dot) and calls (lparen)
   if (token.kind === "dot" || token.kind === "lparen") return 9;
   // lbrace for record update (expr { field: value })
-  if (token.kind === "lbrace") return 2;
+  // Phase 6d: align with Rust's bp_of(LBrace)=0 (default) so match/if can use
+  // minPrec=1 to stop before the record-update brace.
+  if (token.kind === "lbrace") return 0;
   // pipe operator (|>)
-  if (token.kind === "pipeOp") return 2;
-  // Phase 6d: is operator (same precedence as ||)
-  if (token.kind === "is") return 2;
+  // Phase 6d: align with Rust's bp_of(PipeOp)=0
+  if (token.kind === "pipeOp") return 0;
+  // Phase 6d: is operator — align with Rust's bp_of(Is)=3 so `x is Some && y is None`
+  // parses as `(x is Some) && (y is None)` and `x + 1 is Some` parses as `(x + 1) is Some`.
+  if (token.kind === "is") return 3;
   // Look up binary operators via token value (e.g. "+" for kind "plus", "==" for kind "eqeq")
   const opPrec = PREC[token.value];
   if (opPrec !== undefined) return opPrec;
@@ -113,13 +117,15 @@ function parsePrefix(state: ParserState): Expr {
     const ifToken = advance(state);
     // expect lparen, parse condition, expect rparen
     if (peek(state).kind === "lparen") advance(state);
-    const condition = parseExpr(state, 0);
+    // Use minPrec=1 so condition stops before '{' (record-update brace, prec=0)
+    // — matches Rust's parse_expression(1) in parse_if_expr.
+    const condition = parseExpr(state, 1);
     if (peek(state).kind === "rparen") advance(state);
-    const thenBranch = parseExpr(state, 0);
+    const thenBranch = parseBlockOrExpr(state);
     let elseBranch: Expr | undefined;
     if (peek(state).kind === "else") {
       advance(state);
-      elseBranch = parseExpr(state, 0);
+      elseBranch = parseBlockOrExpr(state);
     }
     const endSpan = elseBranch ? elseBranch.span : thenBranch.span;
     if (elseBranch) {
@@ -143,7 +149,9 @@ function parsePrefix(state: ParserState): Expr {
   if (token.kind === "identifier" && token.value === "match") {
     const savedPos = state.pos;
     const matchToken = advance(state);
-    const matchedExpr = parseExpr(state, 0);
+    // Use minPrec=1 so scrutinee stops before '{' (record-update brace, prec=0)
+    // — matches Rust's parse_expression(1) in try_parse_match.
+    const matchedExpr = parseExpr(state, 1);
     if (peek(state).kind === "lbrace") {
       advance(state); // {
       const arms: import("../ast.js").MatchArm[] = [];
@@ -359,6 +367,35 @@ function parseGroupOrArrow(state: ParserState, lparen: Token): Expr {
   }
 
   return first;
+}
+
+// ─── Block-or-Expression Parser (Phase 6d) ────────────
+// Mirrors Rust's parse_block_or_expr in parser.rs.
+// Parses `{ stmts }` as a block, returning the last expression statement
+// (or `true` literal if block is empty or last stmt is not an expression).
+// If next token is not '{', falls through to parseExpr(state, 0).
+function parseBlockOrExpr(state: ParserState): Expr {
+  if (peek(state).kind !== "lbrace") {
+    return parseExpr(state, 0);
+  }
+  const lbrace = advance(state); // consume '{'
+  const stmts: Stmt[] = [];
+  while (peek(state).kind !== "rbrace" && peek(state).kind !== "eof") {
+    if (peek(state).kind === "semicolon") {
+      advance(state);
+      continue;
+    }
+    stmts.push(parseStmt(state));
+    if (peek(state).kind === "semicolon") advance(state);
+  }
+  const rbrace = peek(state);
+  if (rbrace.kind === "rbrace") advance(state);
+  // Return last expression statement's expr, or `true` literal as unit fallback
+  const last = stmts[stmts.length - 1];
+  if (last && last.kind === "expression") {
+    return last.expr;
+  }
+  return { kind: "literal", literalKind: "boolean", value: true, span: mergeSpan(lbrace.span, rbrace.span) };
 }
 
 // ─── Infix Parsers ─────────────────────────────────────

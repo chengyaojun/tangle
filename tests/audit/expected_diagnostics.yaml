@@ -13,6 +13,17 @@
 # table inside the script. Keep both in sync until powershell-yaml is
 # available in CI, at which point the script can read this file directly.
 
+# ─── Phase 6d: Type Narrowing Completeness ──────────────
+# These 5 diagnostic codes are emitted by the Phase 6d narrowing constructs:
+#   * TANGLE_REFUTABLE_LET_REQUIRES_ELSE — `let Variant(x) = expr` without `else { ... }`
+#   * TANGLE_PATTERN_VARIANT_NOT_FOUND   — `x is Some` where `Some` is not a variant of x's Sum type
+#   * TANGLE_PATTERN_NOT_NARROWABLE      — `x is Pattern` where x's type is neither Sum nor Option<T>
+#   * TANGLE_DESTRUCTURE_NOT_STRUCT      — `let { fields } = expr` where expr is not a struct
+#   * TANGLE_STRUCT_FIELD_NOT_FOUND      — `let { field } = expr` where field is not in the struct
+# No fixtures intentionally trigger these codes (they are validated via Rust unit tests
+# in compiler/tangle-cli/src/checker/{check,check_module}.rs). Listing them here as
+# documentation so future contributors can discover the codes when designing fixtures.
+
 # Phase 2 fixtures that intentionally exercise diagnostic features:
 decision-table-overlap.tangle.md:
   run/js/normal:

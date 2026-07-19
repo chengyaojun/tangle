@@ -65,7 +65,7 @@ const KEYWORDS: Record<string, TokenKind> = {
 };
 
 const MULTI_CHAR_OPS: Record<string, Record<string, TokenKind>> = {
-  "=": { "=": "eqeq" },
+  "=": { "=": "eqeq", ">": "fatArrow" },
   "!": { "=": "neq" },
   "<": { "=": "lte" },
   ">": { "=": "gte" },
